@@ -443,3 +443,6 @@ pre.code { max-height: 50vh; }
 
 /* ---- Sync-1：Googleログイン ---- */
 code.uid { font-size: .8rem; word-break: break-all; background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
+
+/* ---- Sync-2-1：クラウド状態表示 ---- */
+#cloud-result .badge { white-space: normal; }
