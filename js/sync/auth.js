@@ -5,7 +5,10 @@
 //   Firebase が使えなくても・オフラインでも Factory の動作は今までと同じ。
 // ・ログイン状態は Firebase 自身が別のデータベース（firebaseLocalStorageDb）に保存する。
 // ・Firestore（クラウドのデータベース）はまだ読み込まない。
-export const FIREBASE_SDK_VERSION = '12.19.0';
+// ・v0.8.1：ログインはPC・iPhoneとも「ポップアップ方式」だけ。signInWithRedirect は使わない
+//   （GitHub Pagesで公開しているため。Firebase公式の案内どおり）。
+//   SDKは 12.8.0 に固定（12.17.0以降、iPhoneでログインが「missing initial state」で失敗する報告があるため）。
+export const FIREBASE_SDK_VERSION = '12.8.0';
 export const SDK_URLS = {
   app: `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`,
   auth: `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`,
@@ -50,9 +53,19 @@ const MESSAGES = {
   'auth/user-disabled': ['このアカウントは無効にされています', 'Firebaseの「Authentication」の「ユーザー」で状態を確認してください。'],
   'sdk-load-failed': ['ログインの部品（Firebase）を読み込めませんでした', 'インターネット接続を確認してください。学校のネットワークで www.gstatic.com が止められている可能性があります。'],
 };
-export function authErrorMessage(e) {
+const IOS_STATE = '（Googleの画面に「Unable to process request due to missing initial state」と出た場合も、この案内です）';
+export function authErrorMessage(e, env = {}) {
   const code = e?.code || '';
-  const [title, how] = MESSAGES[code] || ['ログインできませんでした', `もう一度お試しください。続く場合は、この表示（${code || e?.message || '不明なエラー'}）をClaudeに伝えてください。`];
+  let [title, how] = MESSAGES[code] || ['ログインできませんでした', `もう一度お試しください。続く場合は、この表示（${code || e?.message || '不明なエラー'}）をClaudeに伝えてください。`];
+  if (code === 'popup-timeout') {
+    [title, how] = env.ios && env.standalone
+      ? ['ホーム画面版ではログインが完了しませんでした', `iPhoneのホーム画面版では、Googleの画面が別に開くため、ログインの結果がFactoryに戻らないことがあります。開いたGoogleの画面を閉じて、もう一度押してください。続く場合は、SafariでFactoryを開いてログインできるか確かめ、結果をClaudeに伝えてください（ホーム画面版用の方式を用意します）。${IOS_STATE}`]
+      : ['ログインが完了しませんでした', `Googleの画面を閉じて、もう一度「Googleでログイン」を押してください。続く場合は、この画面のスクリーンショットをClaudeに送ってください。${env.ios ? IOS_STATE : ''}`];
+  } else if (env.ios && code === 'auth/popup-blocked') {
+    how = 'iPhoneの「設定」→「アプリ」→「Safari」→「ポップアップブロック」をオフにしてから、もう一度押してください。ログインが終わったらオンに戻して構いません。';
+  } else if (env.ios && code === 'auth/popup-closed-by-user') {
+    how = `もう一度「Googleでログイン」を押し、アカウントを選んでください。${IOS_STATE}${env.standalone ? '続く場合は、SafariでFactoryを開いてログインできるか確かめ、結果をClaudeに伝えてください。' : ''}`;
+  }
   return { code, title, how };
 }
 
@@ -91,18 +104,45 @@ export function initAuth({ config } = {}) {
   return initPromise;
 }
 
-export async function signIn() {
-  await initAuth();
-  if (!auth) return state;
-  try {
-    const provider = new fb.auth.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const r = await fb.auth.signInWithPopup(auth, provider);
-    emit({ status: 'signedIn', user: summary(r.user), error: null });
-  } catch (e) {
-    emit({ status: auth.currentUser ? 'signedIn' : 'signedOut', error: authErrorMessage(e) });
-  }
-  return state;
+// この端末の状況（ログイン方法の判断に使う）
+export function envInfo(nav = (typeof navigator !== 'undefined' ? navigator : {}), mm = (typeof matchMedia === 'function' ? matchMedia : null)) {
+  const ua = nav.userAgent || '';
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 1);
+  const standalone = (mm ? mm('(display-mode: standalone)').matches : false) || nav.standalone === true;
+  return { ios, standalone };
+}
+// ログイン方法：どの端末でもポップアップ方式（リダイレクト方式は使わない）。
+// iPhoneのホーム画面版はGoogleの画面が別に開くため、結果が戻らないときに備えて「待ち時間の上限」を設ける
+export function signInPlan(env = envInfo()) {
+  return { method: 'popup', watchdogMs: env.ios && env.standalone ? 60000 : env.ios ? 120000 : 0 };
+}
+
+// ログイン。ポップアップはボタンを押した直後に開く必要がある（iPhone Safariの制限）ため、準備済みならすぐ呼ぶ
+export function signIn({ env = envInfo(), watchdogMs } = {}) {
+  if (!auth) return initAuth().then(() => auth ? popupSignIn(env, watchdogMs) : state);
+  return popupSignIn(env, watchdogMs);
+}
+function popupSignIn(env, watchdogMs) {
+  const plan = signInPlan(env);
+  const limit = watchdogMs ?? globalThis.__FACTORY_TEST_WATCHDOG_MS ?? plan.watchdogMs; // 自動テストでは待ち時間を短くできる
+  let provider;
+  try { provider = new fb.auth.GoogleAuthProvider(); provider.setCustomParameters({ prompt: 'select_account' }); }
+  catch (e) { emit({ error: authErrorMessage(e, env) }); return Promise.resolve(state); }
+  let settled = false;
+  const popup = fb.auth.signInWithPopup(auth, provider).then(r => {
+    settled = true; emit({ status: 'signedIn', user: summary(r.user), error: null, pending: false }); return state;
+  }, e => {
+    settled = true; emit({ status: auth.currentUser ? 'signedIn' : 'signedOut', error: authErrorMessage(e, env), pending: false }); return state;
+  });
+  emit({ pending: true, error: null });
+  if (!limit) return popup;
+  // 一定時間たっても結果が戻らないときは、画面を固まらせずに案内を出す（あとで結果が戻ればログイン済みに切り替わる）
+  const watchdog = new Promise(resolve => setTimeout(() => {
+    if (settled) return resolve(state);
+    if (auth.currentUser) { emit({ status: 'signedIn', user: summary(auth.currentUser), error: null, pending: false }); return resolve(state); }
+    emit({ pending: false, error: authErrorMessage({ code: 'popup-timeout' }, env) }); resolve(state);
+  }, limit));
+  return Promise.race([popup, watchdog]);
 }
 
 export async function signOut() {

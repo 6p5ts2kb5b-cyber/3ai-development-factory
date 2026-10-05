@@ -4,7 +4,7 @@
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
-| Sync-1 | Googleログインだけ（Factoryのデータは送受信しない） | 実装済み・Firebase設定待ち・実機確認待ち |
+| Sync-1 | Googleログインだけ（Factoryのデータは送受信しない） | PC（Edge）合格／iPhone は v0.8.1 で修正・実機確認待ち |
 | Sync-2 | 学校Surfaceからクラウドへの初回登録（事前に自動バックアップ） | 未着手（Sync-1の実機確認 Surface → iPhoneホーム画面版 が両方合格してから） |
 | Sync-3 | 双方向の同期 | 未着手 |
 | Sync-4 | オフライン・競合・同期状態の表示 | 未着手 |
@@ -18,7 +18,9 @@
 
 ## Sync-1（実装済み）
 - `js/sync/auth.js`：Firebase Authentication（Googleログイン・ポップアップ方式）。**db.js を読み込まず、Factoryのデータベースに一切触れない**（自動テストで確認）
-- Firebase SDK 12.19.0 を公式配布元（www.gstatic.com）から、ログイン画面を開いたときだけ読み込む。起動時には読み込まない
+- Firebase SDK 12.8.0 を公式配布元（www.gstatic.com）から、ログイン画面を開いたときだけ読み込む。起動時には読み込まない（v0.8.1：12.17.0以降でiPhoneの「missing initial state」失敗の報告があるため 12.8.0 に固定）
+- ログインはPC・iPhoneとも**ポップアップ方式のみ**。signInWithRedirect は使わない（GitHub Pagesで公開しているため。Firebase公式の Option 2）
+- iPhoneホーム画面版でポップアップの結果が戻らない場合の正式な対策：Firebase公式の Option 4（ログイン補助ファイル `/__/auth/*` を同じドメインで公開し、authDomain をそのドメインにする）。ユーザー用リポジトリ `6p5ts2kb5b-cyber.github.io` の追加と、Google Cloud でのリダイレクト先追加が必要
 - ログイン状態は Firebase が別のデータベース（firebaseLocalStorageDb）に保存する
 - `config/firebase.json`：Firebaseの接続情報（公開されても問題ない値）。メールアドレス等の個人情報は入れない（入っていると読み込みを拒否）
 - 画面：設定 →「Googleログインを開く」（`#/account`）。名前・Googleアカウント・ユーザーID・端末の種類を表示。ログアウト可。エラーは日本語で理由と対処を表示

@@ -4,7 +4,7 @@
 
 ## プロジェクト
 - 名称：3AI Development Factory（指示書 v1.0 に基づく）
-- Factory v0.8.0（v0.7.0 は Phase 7 完了版として保管）
+- Factory v0.8.1（v0.7.0 は Phase 7 完了版として保管）
 - 構成：HTML + CSS + JavaScript（ビルド不要）、PWA、データは端末内 IndexedDB（schema v5）、GitHub Pages で無料公開
 
 ## Phaseの状況
@@ -16,7 +16,7 @@
 - **Phase 6 テスト管理・完成度・引継ぎ：完了（実機確認待ち）** — 実機確認はまだ（「v1完成まで」画面で記録できる）
 - **Phase 7 7プロジェクトの正式初期登録・既存アプリ取込：完了（実機確認待ち）** — 実機確認はまだ
 - **方針変更（2026-10-05）：複数端末同期をFactory完成条件に追加**（Firebase Authentication＋Cloud Firestore・Sparkプラン。詳細は docs/同期設計.md）
-- **Sync-1 Googleログインだけ：実装済み・Firebase設定済み（実機確認待ち）** — Factoryのデータは送受信しない
+- **Sync-1 Googleログインだけ：PC（Edge）合格／iPhone は v0.8.1 で修正（実機確認待ち）** — Factoryのデータは送受信しない
 - 次：Firebase設定 → Sync-1実機確認（学校Surface → iPhoneホーム画面版）→ Sync-2 初回登録。Vintage Hunt等の個別アプリはまだ開始しない
 
 ## ユーザー確定事項（変更禁止）
@@ -103,14 +103,14 @@ PWA土台、IndexedDB、共通項目自動付与、変更履歴、ゴミ箱/復�
 
 ### Sync-1
 - 設定 →「Googleログインを開く」：Googleログイン／ログアウト、名前・アカウント・ユーザーID・端末の種類、日本語エラー、オフライン表示
-- Firebase SDK 12.19.0 を公式配布元からログイン画面でだけ読み込む。ログイン機能はFactoryのデータに一切触れない
+- Firebase SDK 12.8.0 を公式配布元からログイン画面でだけ読み込む（v0.8.1：12.17.0以降のiPhone不具合報告のため）。ログインはポップアップ方式のみ（signInWithRedirect は使わない）。ログイン機能はFactoryのデータに一切触れない
 - config/firebase.json に Factory用Firebase（factory-5b335）を設定済み。承認済みドメイン 6p5ts2kb5b-cyber.github.io
 
 ## 未実装
 Sync-2〜5（初回登録・双方向同期・オフライン/競合/同期表示・通しテスト）、各アプリ本体（v1完成判定の後）、7件の既存アプリ取込（ユーザーが伝えたものだけ）、自動同期本体、設定値の画面編集（詳細は config/handoff.json）
 
 ## テスト結果（2026-10-04）
-- ブラウザ内自動テスト 64/64（Sync-1:3項目を追加）
+- ブラウザ内自動テスト 66/66（Sync-1:5項目）
 - Phase 1 回帰の画面操作テスト 34/34
 - Phase 2 画面操作テスト 90/90（iPhone 13・iPhone SE・PC）
 - Phase 3 画面操作テスト 93/93（iPhone 13・iPhone SE・PC）
@@ -118,8 +118,8 @@ Sync-2〜5（初回登録・双方向同期・オフライン/競合/同期表�
 - Phase 5 画面操作テスト 104/104（iPhone 13・iPhone SE・PC）
 - Phase 6 画面操作テスト 81/81（iPhone 13・iPhone SE・PC）
 - Phase 7 画面操作テスト 108/108（iPhone 13・iPhone SE・PC）
-- Sync-1 画面操作テスト 66/66（にせFirebase）
-- 合計 733/733 合格（ブラウザ内64＋画面操作669）
+- Sync-1 画面操作テスト 78/78（にせFirebase・iPhoneホーム画面版の案内を含む）
+- 合計 747/747 合格（ブラウザ内66＋画面操作681）
 - 「プロジェクトAを削除・復元・完全削除してもBのデータは1件も変わらない」ことを自動テストで確認
 - 開発者用の画面操作テストは tests/e2e/ にあります
 
@@ -138,9 +138,11 @@ Sync-2〜5（初回登録・双方向同期・オフライン/競合/同期表�
 - Sync-1：iPhoneホーム画面版でのポップアップログインは実機確認が必要。学校ネットワークで www.gstatic.com が開けるか要確認。本物のFirebaseでの自動テストは開発環境ではできない
 - 7件の既存アプリは未確認（推測で登録しない）。claude.aiの公開一覧にはSTORMクラブの設計書2件・けいさんラッシュ・都道府県ベースボール・セッションタイマー等があるが、対応は未確認
 - 仕様との照合は見出し下の箇条書き単位（絶対条件・技術上の注意・AIの役割・未実装は対象外）
-- 更新時は sw.js の CACHE 版数を上げる（現在 factory-v8）
+- 更新時は sw.js の CACHE 版数を上げる（現在 factory-v9）
 
 ## 次に行う作業
-1. Sync-1 実機確認：学校Surface（Edge）で本物のGoogleログイン／ログアウト（8プロジェクトが変わらないことも確認）→ iPhoneホーム画面版（両方合格が条件）
-2. Firestore作成・owners にユーザーIDを登録（Claudeが案内）
-3. Sync-2：学校Surfaceからクラウドへの初回登録
+1. factory-v0.8.1.zip を上書きアップロード → 設定画面で Factory v0.8.1
+2. PC（Edge）でログイン／ログアウトを再確認
+3. iPhone：Safari（ブラウザ）→ ホーム画面版 の順に確認し、どちらで成功・失敗したかを記録
+4. ホーム画面版だけ失敗する場合：ログイン補助ファイルを同じドメインで公開する方式（Firebase公式 Option 4）
+5. 両方合格後：Sync-2（初回登録）

@@ -1,6 +1,6 @@
 // Phase Sync-1：Googleログイン画面（ログインの確認だけ。Factoryのデータは送受信しない）
 import { esc, toast, copyText } from '../ui.js';
-import { initAuth, onAuth, signIn, signOut, deviceKind, FIREBASE_SDK_VERSION } from '../sync/auth.js';
+import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
 
 const NOTE = 'この段階（Sync-1）では、Googleログインができるかだけを確認します。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
 
@@ -41,17 +41,18 @@ export async function accountView(view) {
       card.querySelector('#acc-copy-uid').onclick = async () => { await copyText(s.user.uid); toast('ユーザーIDをコピーしました'); };
       return;
     }
+    const env = envInfo();
+    const iosNote = env.ios ? `<p class="muted">iPhoneでは、Googleの画面が別に開きます。アカウントを選んだら、Factoryの画面に戻ってください。${env.standalone ? 'ホーム画面版でうまくいかない場合は、SafariでFactoryを開いて試してください。' : ''}</p>` : '';
     card.innerHTML = `<h2>ログイン</h2><p><span class="badge">未ログイン</span></p>
       <p>同じGoogleアカウントで各端末にログインできるか確認します。</p>
       ${navigator.onLine ? '' : '<div class="notice warn slim">インターネットに接続していません。接続するとログインできます。</div>'}
       ${err}
-      <button class="btn primary big" id="acc-in">Googleでログイン</button>${dev}`;
-    card.querySelector('#acc-in').onclick = async () => {
+      ${s.pending ? '<div class="notice slim" id="acc-pending">Googleの画面でアカウントを選んでください…（終わるとここが「ログイン中」に変わります）</div>' : ''}
+      <button class="btn primary big" id="acc-in"${s.pending ? ' disabled' : ''}>${s.pending ? 'Googleの画面を開いています…' : 'Googleでログイン'}</button>${iosNote}${dev}`;
+    card.querySelector('#acc-in').onclick = () => {
       if (busy) return; busy = true;
-      const b = card.querySelector('#acc-in'); b.disabled = true; b.textContent = 'Googleの画面を開いています…';
-      const r = await signIn(); busy = false;
-      if (r.status === 'signedIn') toast('ログインしました（データの同期はまだ行いません）');
-      else render(r);
+      // ポップアップはボタンを押した直後に開く必要があるため、ここでは待たずにすぐ呼ぶ
+      signIn().then(r => { busy = false; if (r.status === 'signedIn') toast('ログインしました（データの同期はまだ行いません）'); });
     };
   };
   const off = onAuth(render);

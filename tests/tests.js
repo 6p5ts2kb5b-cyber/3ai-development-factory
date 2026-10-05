@@ -1192,7 +1192,7 @@ test('【Sync-1】Firebaseの設定チェック（未設定は「設定待ち」
   eq(SyncAuth.checkFirebaseConfig({ ...FAKE_CFG, owner: 'me@gmail.com' }).ok, false, 'メールアドレス入りを拒否');
   const shipped = await (await fetch('../config/firebase.json', { cache: 'no-cache' })).json();
   assert(!/@/.test(JSON.stringify(shipped.config || {})), '配布する設定ファイルにメールアドレスが入っている');
-  eq(SyncAuth.SDK_URLS.auth, 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js', 'Firebase公式配布元・バージョン固定');
+  eq(SyncAuth.SDK_URLS.auth, 'https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js', 'Firebase公式配布元・バージョン固定（12.8.0）');
   SyncAuth._setLoader(async () => { throw new Error('読み込ませない'); });
   eq((await SyncAuth.initAuth({ config: null })).status, 'unconfigured', '設定がなければ Firebase を読み込まず「設定待ち」');
   SyncAuth._setLoader(null);
@@ -1235,6 +1235,46 @@ test('【Sync-1】ログイン機能はFactoryのデータに一切触れない�
   await SyncAuth.initAuth({ config: FAKE_CFG }); await SyncAuth.signIn(); await SyncAuth.signOut();
   SyncAuth._setLoader(null);
   eq(JSON.stringify((await db.exportAll()).data), before, 'ログイン操作でFactoryのデータが変わった');
+});
+
+
+test('【Sync-1 v0.8.1】iPhone対応：どの端末でもポップアップ方式（リダイレクト方式は使わない）', async () => {
+  const src = await (await fetch('../js/sync/auth.js', { cache: 'no-cache' })).text();
+  assert(!/\bsignInWithRedirect\s*\(|\bgetRedirectResult\s*\(/.test(src), 'リダイレクト方式を使っている');
+  const env = (ua, standalone = false, touch = 5) => SyncAuth.envInfo({ userAgent: ua, standalone, maxTouchPoints: touch }, null);
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const EDGE = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 Edg/130.0';
+  const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  eq([env(IPHONE).ios, env(IPHONE).standalone, env(IPHONE, true).standalone, env(EDGE, false, 0).ios, env(IPAD, false, 5).ios], [true, false, true, false, true], '端末の判定');
+  for (const e of [env(EDGE, false, 0), env(IPHONE), env(IPHONE, true), env(IPAD)]) eq(SyncAuth.signInPlan(e).method, 'popup', 'ポップアップ方式');
+  eq([SyncAuth.signInPlan(env(EDGE, false, 0)).watchdogMs, SyncAuth.signInPlan(env(IPHONE, true)).watchdogMs > 0, SyncAuth.signInPlan(env(IPHONE)).watchdogMs > 0], [0, true, true], 'iPhoneだけ待ち時間の上限');
+  const home = SyncAuth.authErrorMessage({ code: 'popup-timeout' }, { ios: true, standalone: true });
+  assert(home.title.includes('ホーム画面版') && home.how.includes('Safari') && home.how.includes('missing initial state'), 'ホーム画面版の案内');
+  const blocked = SyncAuth.authErrorMessage({ code: 'auth/popup-blocked' }, { ios: true });
+  assert(blocked.how.includes('ポップアップブロック') && blocked.how.includes('オフ'), 'iPhoneのポップアップブロックの案内');
+  assert(SyncAuth.authErrorMessage({ code: 'auth/popup-blocked' }, {}).how.includes('ポップアップを許可'), 'PCのポップアップブロックの案内');
+});
+
+test('【Sync-1 v0.8.1】ボタンを押した直後にポップアップを開く・結果が戻らないときは案内（あとで戻ればログイン済み）', async () => {
+  // 1) 準備済みなら、待たずにすぐ signInWithPopup を呼ぶ（iPhone Safariのポップアップ制限への対策）
+  const f = fakeFirebase();
+  SyncAuth._setLoader(async () => f.mod);
+  await SyncAuth.initAuth({ config: FAKE_CFG });
+  const p = SyncAuth.signIn({ env: { ios: true, standalone: false }, watchdogMs: 0 });
+  assert(f.calls.some(c => c[0] === 'popup'), 'ボタンを押した直後にポップアップを開いていない');
+  eq((await p).status, 'signedIn', 'ログイン');
+  await SyncAuth.signOut();
+  // 2) ホーム画面版で結果が戻らない → 上限時間で案内、画面は固まらない
+  let release;
+  f.mod.auth.signInWithPopup = () => new Promise(r => { release = r; });
+  const r = await SyncAuth.signIn({ env: { ios: true, standalone: true }, watchdogMs: 50 });
+  eq([r.status, r.pending, r.error?.code], ['signedOut', false, 'popup-timeout'], '結果が戻らないときの案内');
+  assert(r.error.title.includes('ホーム画面版'), 'ホーム画面版の案内文');
+  // 3) あとから結果が戻れば、ログイン済みに切り替わる
+  release({ user: { uid: 'late-1', displayName: '遅れて完了', email: 'x@example.com', providerData: [] } });
+  await sleep(20);
+  eq([SyncAuth.authState().status, SyncAuth.authState().user?.uid, SyncAuth.authState().error], ['signedIn', 'late-1', null], '遅れて完了');
+  SyncAuth._setLoader(null);
 });
 
 // ---------------- 実行 ----------------

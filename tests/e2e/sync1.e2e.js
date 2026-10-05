@@ -4,7 +4,7 @@ const { chromium, devices } = require('playwright');
 const fs = require('fs');
 const OUT = process.env.SHOTS || require('path').join(__dirname, 'shots');
 const BASE = 'http://localhost:8765/';
-const SDK = 'https://www.gstatic.com/firebasejs/12.19.0/';
+const SDK = 'https://www.gstatic.com/firebasejs/12.8.0/';
 const results = [];
 const check = (name, ok, info = '') => { results.push({ name, ok, info }); console.log(ok ? 'PASS' : 'FAIL', name, info); };
 const waitText = (page, sel, ...words) => page.waitForFunction(([s, w]) => { const el = document.querySelector(s); return el && w.every(x => el.innerText.includes(x)); }, [sel, words], { timeout: 15000 }).then(() => true).catch(() => false);
@@ -21,6 +21,7 @@ export class GoogleAuthProvider { setCustomParameters(p) { this.p = p; } }
 export const signInWithPopup = async () => {
   await new Promise(r => setTimeout(r, 150));
   const fail = localStorage.getItem('fakeFirebaseFail'); if (fail) { const e = new Error(fail); e.code = fail; throw e; }
+  if (localStorage.getItem('fakeFirebaseHang')) await new Promise(() => {}); // 結果が戻らない（iPhoneホーム画面版で起きる状況）
   const u = { uid: 'uid-surface-0001', displayName: 'テスト先生', email: 'teacher@example.com', providerData: [{ providerId: 'google.com' }] }; set(u); return { user: u };
 };
 export const signOut = async () => set(null);`;
@@ -85,7 +86,7 @@ async function scenario(label, ctxOpts) {
 
   // 5. Factoryのデータは1件も変わらない・Firestoreへ接続しない
   check(L('ログインしてもFactoryのデータ（8プロジェクト等）は1件も変わらない'), (await snapshot()) === before);
-  check(L('Firestore・Googleの他のサーバーへ接続しない'), external.every(h => h.startsWith('www.gstatic.com/firebasejs/12.19.0/firebase-')), [...new Set(external)].join(','));
+  check(L('Firestore・Googleの他のサーバーへ接続しない'), external.every(h => h.startsWith('www.gstatic.com/firebasejs/12.8.0/firebase-')), [...new Set(external)].join(','));
 
   // 6. ログアウト
   await page.click('#acc-out');
@@ -115,6 +116,30 @@ async function scenario(label, ctxOpts) {
   await ctx.setOffline(false);
   check(L('最後までFactoryのデータは変わらない'), (await snapshot()) === before);
 
+  // 9. iPhoneホーム画面版（ポップアップの結果が戻らない場合）
+  if (label.startsWith('iphone')) {
+    const hp = await ctx.newPage();
+    await hp.addInitScript(() => { Object.defineProperty(navigator, 'standalone', { get: () => true }); window.__FACTORY_TEST_WATCHDOG_MS = 800; localStorage.setItem('fakeFirebaseHang', '1'); });
+    hp.on('pageerror', e => errors.push(e.message));
+    await hp.goto(BASE + '#/account'); await hp.waitForSelector('#acc-in');
+    check(L('ホーム画面版：端末の種類とiPhone向けの説明'), await waitText(hp, '#acc-card', 'iPhone（ホーム画面版）', 'Googleの画面が別に開きます', 'Safariで'));
+    await hp.click('#acc-in');
+    check(L('ホーム画面版：待っている間は「アカウントを選んでください」'), await waitText(hp, '#acc-card', 'アカウントを選んでください'));
+    check(L('ホーム画面版：結果が戻らなければ日本語で案内し、もう一度押せる'), await waitText(hp, '#acc-card', 'ホーム画面版ではログインが完了しませんでした', 'Safari', 'missing initial state') && await hp.isEnabled('#acc-in'));
+    await hp.evaluate(() => localStorage.removeItem('fakeFirebaseHang'));
+    await hp.click('#acc-in');
+    check(L('ホーム画面版：もう一度押してログインできる'), await waitText(hp, '#acc-card', 'ログインできています'));
+    await hp.click('#acc-out'); await waitText(hp, '#acc-card', '未ログイン');
+    await ov('home-screen'); await hp.screenshot({ path: `${OUT}/s1-${label}-homescreen.png`, fullPage: true });
+    await hp.close();
+    check(L('ホーム画面版の操作後もFactoryのデータは変わらない'), (await snapshot()) === before);
+    // iPhone Safari：ポップアップブロックの案内
+    await page.evaluate(() => localStorage.setItem('fakeFirebaseFail', 'auth/popup-blocked'));
+    await page.goto(BASE + '#/settings'); await page.goto(BASE + '#/account'); await page.reload(); await page.waitForSelector('#acc-in');
+    await page.click('#acc-in');
+    check(L('iPhone：ポップアップブロック時は設定の場所まで案内'), await waitText(page, '#acc-card', 'ログイン画面がブロックされました', 'ポップアップブロック', 'オフ'));
+    await page.evaluate(() => localStorage.removeItem('fakeFirebaseFail'));
+  }
   check(L('横はみ出しなし'), overflowOk);
   check(L('JavaScriptエラーなし'), errors.length === 0, errors.join(' | '));
   await browser.close();

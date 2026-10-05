@@ -1,0 +1,8 @@
+3AI Development Factory v0.8.1（Sync-1：Googleログインだけ・iPhone対応の修正）
+- 設定画面の表示：Factory v0.8.1
+- sw.js：const CACHE = 'factory-v9';
+- ログインはPC・iPhoneとも「ポップアップ方式」だけ（signInWithRedirect は使わない）
+- Firebase SDK 12.8.0（iPhoneでの「missing initial state」失敗の報告がある 12.17.0 以降を避ける）
+- config/firebase.json：Factory用Firebase（factory-5b335）
+- Factoryのデータは送受信しない（Firestoreには接続しない）
+このファイルがGitHubの一覧に表示されていれば、v0.8.1のファイルがアップロードされています。

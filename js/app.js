@@ -19,7 +19,7 @@ import { FACTORY_ID } from './db.js';
 import { safeCopy } from './views/safecopy.js';
 
 import { accountView, accountCardHtml } from './views/account.js';
-export const APP_VERSION = '0.8.0';
+export const APP_VERSION = '0.8.1';
 const view = document.getElementById('view');
 
 let db, master, handoff;
