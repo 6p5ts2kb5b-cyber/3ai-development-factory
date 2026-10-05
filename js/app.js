@@ -19,7 +19,8 @@ import { FACTORY_ID } from './db.js';
 import { safeCopy } from './views/safecopy.js';
 
 import { accountView, accountCardHtml } from './views/account.js';
-export const APP_VERSION = '0.8.2';
+import { syncCheckView } from './views/synccheck.js';
+export const APP_VERSION = '0.8.3';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -40,6 +41,7 @@ async function boot() {
   try { handoff = await loadHandoff(); } catch { handoff = null; }
   if (handoff) { const b = document.getElementById('phase-badge'); b.textContent = handoff.phase; b.title = `${handoff.phase}：${handoff.phaseStatus}`; }
 
+  // 端末のデータが自動削除されにくくする（iPhoneはホーム画面に追加すると有効）
   try { if (navigator.storage?.persist) await navigator.storage.persist(); } catch {}
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -53,20 +55,24 @@ async function boot() {
   route();
 }
 
+// 画面部品へ渡す共通情報
 const ctx = {
   get db() { return db; },
   get master() { return master; },
   refresh: () => route({ keepScroll: true }),
 };
 
+// ---------- 画面切替 ----------
 const routes = {
   '/': () => homeView(ctx, view, params()), '/system': home, '/backup': backup, '/trash': trash, '/handoff': handoffView, '/settings': settings,
   '/talk': () => talkView(ctx, view), '/requests': () => requestsView(ctx, view, params()),
   '/v1': () => v1View(ctx, view, { loadHandoff }),
-  '/account': () => accountView(view),
+  '/account': () => accountView(view), // Sync-1：Googleログインだけ（データは送受信しない）
+  '/sync-check': () => syncCheckView(ctx, view), // Sync-2-2：登録の予行演習（確認だけ・送信しない）
 };
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
-const NAV_OF = { '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
+// メニューのどこを選択中にするか
+const NAV_OF = { '/sync-check': '/settings', '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
 async function route({ keepScroll = false } = {}) {
   const path = (location.hash.replace(/^#/, '') || '/').split('?')[0];
   const seg = path.split('/').filter(Boolean);
@@ -93,6 +99,7 @@ async function storageInfo() {
 }
 const mb = n => n == null ? '不明' : (n / 1024 / 1024).toFixed(1) + ' MB';
 
+// ---------- ホーム（Phase 1 基盤確認）----------
 async function home() {
   const counts = {};
   for (const s of [...DATA_STORES, 'history', 'trash']) counts[s] = await db.count(s);
@@ -138,6 +145,7 @@ async function home() {
     </section>`;
 }
 
+// ---------- バックアップ / 復元 ----------
 async function backup() {
   const lastBackup = (await db.get('settings', 'lastBackup'))?.value;
   view.innerHTML = `
@@ -191,6 +199,7 @@ async function backup() {
   };
 }
 
+// ---------- ゴミ箱 ----------
 async function trash() {
   const items = await db.listTrash();
   const title = r => r.record?.name || r.record?.title || r.record?.topic || r.record?.fileName || r.record?.item || r.record?.url || r.recordId;
@@ -217,6 +226,7 @@ async function trash() {
   });
 }
 
+// ---------- 引継ぎ（Factory全体）----------
 async function handoffView() {
   if (!handoff) { view.innerHTML = errorHtml(new Error('引継ぎファイル（config/handoff.json）を読み込めませんでした')); return; }
   const lastTest = (await db.get('settings', 'lastTestRun'))?.value;
@@ -245,6 +255,7 @@ async function handoffView() {
   };
 }
 
+// ---------- 設定 ----------
 async function settings() {
   const st = await storageInfo();
   view.innerHTML = `<h1>設定</h1>
