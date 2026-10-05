@@ -1,0 +1,113 @@
+// Phase Sync-2-2：登録の予行演習（確認だけ）
+import { findPersonalInfo } from '../privacy.js';
+
+export const SYNC_TARGET_STORES = ['projects', 'specs', 'requests', 'compares', 'files', 'tests', 'urls', 'issues', 'ideas', 'tasks', 'guides', 'handoff', 'checks', 'history', 'trash', 'settings'];
+export const DEVICE_LOCAL_SETTINGS = ['master', 'lastTestRun', 'lastBackup'];
+export const FIRESTORE_DOC_LIMIT = 1048576;
+export const SIZE_WARN = 900000;
+export const STORE_LABELS_JA = { projects: 'プロジェクト', specs: '仕様書', requests: '要望', compares: '3AI比較', files: 'ファイル・コード', tests: 'テスト', urls: 'URL', issues: '未解決事項', ideas: '相談メモ', tasks: '次にやること', guides: '指示書の保存版', handoff: '引継ぎ', checks: '実機・公開確認', history: '変更履歴', trash: 'ゴミ箱', settings: '設定' };
+
+const SKIP_KEYS = new Set(['id', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'rev', 'deviceId', 'localOnly', 'actor', 'by', 'decidedBy', 'fixedBy', 'checkedBy', 'at', 'projectId', 'recordId', 'store', 'seedKey', 'key', 'master']);
+const enc = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+export const byteSize = obj => { const s = JSON.stringify(obj) ?? ''; return enc ? enc.encode(s).length : s.length * 3; };
+
+export function recordLabel(store, r) {
+  if (store === 'history') return `${STORE_LABELS_JA[r?.store] || r?.store || ''}の${({ create: '作成', update: '変更', delete: '削除', restore: '復元', purge: '完全削除', fix: '確定', import: '復元' })[r?.action] || r?.action || '記録'}（${String(r?.at || '').slice(0, 10)}）`;
+  if (store === 'trash') return `ゴミ箱：${r?.record?.name || r?.record?.title || r?.record?.fileName || r?.recordId || r?.id || ''}`.slice(0, 60);
+  const v = r?.name || r?.title || r?.item || r?.topic || r?.fileName || r?.url || r?.device || r?.key || (typeof r?.text === 'string' ? r.text.slice(0, 30) : '') || (r?.record?.name) || r?.id || '';
+  return String(v).slice(0, 60);
+}
+export function isSyncTarget(store, r) {
+  if (!SYNC_TARGET_STORES.includes(store) || !r) return false;
+  if (r.localOnly === true) return false;
+  if (store === 'settings' && DEVICE_LOCAL_SETTINGS.includes(r.key || r.id)) return false;
+  return true;
+}
+export function canonical(v) {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`;
+  return JSON.stringify(v ?? null);
+}
+function walkStrings(obj, path, out, depth = 0) {
+  if (depth > 6 || obj == null) return;
+  if (typeof obj === 'string') { if (obj.length >= 2) out.push([path, obj]); return; }
+  if (Array.isArray(obj)) { obj.forEach((v, i) => walkStrings(v, path, out, depth + 1)); return; }
+  if (typeof obj === 'object') for (const [k, v] of Object.entries(obj)) if (!SKIP_KEYS.has(k)) walkStrings(v, path ? `${path}.${k}` : k, out, depth + 1);
+}
+export function analyzeForSync(exp, { master = null, expectedProjects = [], checkBackup = null } = {}) {
+  const data = exp?.data || {};
+  const counts = {}, excluded = { localOnly: 0, deviceSettings: [] };
+  const targets = [];
+  for (const store of Object.keys(data)) {
+    for (const r of data[store] || []) {
+      if (isSyncTarget(store, r)) { targets.push([store, r]); counts[store] = (counts[store] || 0) + 1; }
+      else if (r?.localOnly === true) excluded.localOnly++;
+      else if (store === 'settings') excluded.deviceSettings.push(r.key || r.id);
+    }
+  }
+  for (const s of SYNC_TARGET_STORES) counts[s] ||= 0;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const projects = (data.projects || []).filter(p => isSyncTarget('projects', p));
+  const ord = n => { const i = expectedProjects.indexOf(n); return i < 0 ? 1e6 : i; };
+  const names = projects.slice().sort((a, b) => ord(a.name) - ord(b.name) || String(a.createdAt).localeCompare(String(b.createdAt))).map(p => p.name);
+  const dupNames = [...new Set(names.filter((n, i) => names.indexOf(n) !== i))];
+  const missing = expectedProjects.filter(n => !names.includes(n));
+  const extra = names.filter(n => !expectedProjects.includes(n));
+  const sized = targets.map(([store, r]) => ({ store, id: r.id, label: recordLabel(store, r), bytes: byteSize(r) }));
+  const totalBytes = sized.reduce((a, b) => a + b.bytes, 0);
+  const tooLarge = sized.filter(x => x.bytes > SIZE_WARN).sort((a, b) => b.bytes - a.bytes);
+  const largest = sized.slice().sort((a, b) => b.bytes - a.bytes).slice(0, 3);
+  const lastUpdated = targets.reduce((m, [, r]) => (r.updatedAt && r.updatedAt > m ? r.updatedAt : m), '');
+  let backup = { ok: true, bytes: 0, reason: '' };
+  try {
+    const text = JSON.stringify(exp);
+    backup.bytes = enc ? enc.encode(text).length : text.length;
+    if (checkBackup) checkBackup(JSON.parse(text));
+  } catch (e) { backup = { ok: false, bytes: backup.bytes, reason: (e?.details?.join(' / ') || e?.message || String(e)) }; }
+  const found = new Map();
+  for (const [store, r] of targets) {
+    const strs = []; walkStrings(r, '', strs);
+    for (const [field, text] of strs) for (const f of findPersonalInfo(text, null)) {
+      const k = `${f.kind}|${f.text}`;
+      if (!found.has(k)) found.set(k, { kind: f.kind, text: f.text, count: 0, places: [] });
+      const e = found.get(k); e.count++;
+      if (e.places.length < 3) e.places.push({ store, label: recordLabel(store, r), field });
+    }
+  }
+  const privacy = [...found.values()].sort((a, b) => b.count - a.count);
+  const privacyByKind = privacy.reduce((m, p) => (m[p.kind] = (m[p.kind] || 0) + 1, m), {});
+  const main = { projects: counts.projects, specs: counts.specs, requests: counts.requests, history: counts.history };
+  const others = Object.fromEntries(SYNC_TARGET_STORES.filter(s => !['projects', 'specs', 'requests', 'history'].includes(s)).map(s => [s, counts[s]]));
+  const otherTotal = Object.values(others).reduce((a, b) => a + b, 0);
+  const issues = [];
+  if (!backup.ok) issues.push('バックアップを作れません');
+  if (tooLarge.length) issues.push(`大きすぎるデータが${tooLarge.length}件あります（初回登録では分割して送ります）`);
+  if (missing.length) issues.push(`Phase 7の8プロジェクトのうち、${missing.length}件が見つかりません`);
+  if (dupNames.length) issues.push(`同じ名前のプロジェクトがあります（${dupNames.join('、')}）`);
+  if (privacy.length) issues.push(`個人情報らしき記述が${privacy.length}種類あります（止めはしません。見直してください）`);
+  return { total, counts, main, others, otherTotal, excluded, projects: { count: projects.length, names, dupNames, missing, extra, expected: expectedProjects.length }, size: { totalBytes, tooLarge, largest, limit: FIRESTORE_DOC_LIMIT, warn: SIZE_WARN }, backup, privacy, privacyByKind, lastUpdated, exportedAt: exp?.exportedAt || null, deviceId: exp?.deviceId || null, schemaVersion: exp?.schemaVersion ?? null, issues, blocking: !backup.ok, targetsForFingerprint: targets };
+}
+export async function fingerprint(targets) {
+  const text = targets.map(([s, r]) => `${s}\u0000${r.id}\u0000${canonical(r)}`).sort().join('\n');
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return 'fnv' + (h >>> 0).toString(16).padStart(8, '0');
+  }
+}
+export function summaryText(r, { device = '', fp = '', checkedAt = '' } = {}) {
+  const L = [];
+  L.push(`【Factory 同期の予行演習】${device}`);
+  L.push(`確認日時：${checkedAt}`);
+  L.push(`データの指紋：${fp.slice(0, 12)}`);
+  L.push(`最後の更新：${r.lastUpdated || 'なし'}`);
+  L.push(`プロジェクト：${r.projects.count}件（${r.projects.names.join('、') || 'なし'}）`);
+  L.push(`仕様書：${r.main.specs}件／要望：${r.main.requests}件／変更履歴：${r.main.history}件／その他：${r.otherTotal}件／合計：${r.total}件`);
+  L.push(`バックアップ：${r.backup.ok ? `作成できます（${(r.backup.bytes / 1024 / 1024).toFixed(2)}MB）` : `作成できません（${r.backup.reason}）`}`);
+  L.push(`大きすぎるデータ：${r.size.tooLarge.length}件`);
+  L.push(`個人情報らしき記述：${r.privacy.length}種類`);
+  if (r.issues.length) L.push(`確認が必要：${r.issues.join('／')}`);
+  return L.join('\n');
+}
