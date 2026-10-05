@@ -1,17 +1,22 @@
 // Phase Sync-1：Googleログイン画面（ログインの確認だけ。Factoryのデータは送受信しない）
+// Phase Sync-2-1：クラウドの状態を確認（「登録済みの印」を1件読むだけ。書き込みなし）
 import { esc, toast, copyText } from '../ui.js';
 import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
+import { checkCloudStatus } from '../sync/cloud.js';
 
-const NOTE = 'この段階（Sync-1）では、Googleログインができるかだけを確認します。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
+const NOTE = 'この段階（Sync-2-1）では、Googleログインと「クラウドの状態の確認（読むだけ）」ができます。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
 
 export async function accountView(view) {
   view.innerHTML = `<h1>Googleログイン</h1>
     <div class="notice slim" id="acc-note">${esc(NOTE)}</div>
     <section class="card" id="acc-card"><p class="muted">確認しています…</p></section>
-    <section class="card">
-      <h2>同期の状態</h2>
-      <p><span class="badge">まだ同期していません</span> この端末のデータだけを使っています。</p>
-      <p class="muted">複数の端末で同じデータを使う同期は、Googleログインの実機確認（学校Surface → iPhoneホーム画面版）がすべて合格してから追加します。</p>
+    <section class="card" id="cloud-card">
+      <h2>クラウドの状態（読み取りのみ）</h2>
+      <p class="muted">クラウドにある「登録済みの印」を1件読むだけです。Factoryのデータは送りません・受け取りません。結果はこの画面に表示するだけで、端末には保存しません。</p>
+      <div id="cloud-result"><p><span class="badge">まだ確認していません</span></p></div>
+      <button class="btn" id="cloud-check" disabled>クラウドの状態を確認</button>
+      <p class="muted" id="cloud-hint">Googleにログインすると確認できます。</p>
+      <p class="muted">複数の端末で同じデータを使う同期（初回登録・取り込み）は、この確認が各端末で合格してから、段階ごとに追加します。</p>
     </section>`;
   const card = view.querySelector('#acc-card');
   let busy = false;
@@ -51,23 +56,52 @@ export async function accountView(view) {
       <button class="btn primary big" id="acc-in"${s.pending ? ' disabled' : ''}>${s.pending ? 'Googleの画面を開いています…' : 'Googleでログイン'}</button>${iosNote}${dev}`;
     card.querySelector('#acc-in').onclick = () => {
       if (busy) return; busy = true;
-      // ポップアップはボタンを押した直後に開く必要があるため、ここでは待たずにすぐ呼ぶ
       signIn().then(r => { busy = false; if (r.status === 'signedIn') toast('ログインしました（データの同期はまだ行いません）'); });
     };
   };
-  const off = onAuth(render);
-  // 画面を離れたら購読をやめる
+  const cBtn = view.querySelector('#cloud-check'), cRes = view.querySelector('#cloud-result'), cHint = view.querySelector('#cloud-hint');
+  const cloudAuth = s => { if (!cBtn.isConnected) return; const ok = s.status === 'signedIn'; if (!cBtn.dataset.busy) cBtn.disabled = !ok; cHint.hidden = ok; };
+  cBtn.onclick = async () => {
+    cBtn.dataset.busy = '1'; cBtn.disabled = true; cBtn.textContent = '確認しています…';
+    const r = await checkCloudStatus();
+    delete cBtn.dataset.busy; cBtn.disabled = false; cBtn.textContent = 'もう一度確認';
+    if (cRes.isConnected) cRes.innerHTML = cloudResultHtml(r);
+  };
+  const offCloud = onAuth(cloudAuth);
+  const off0 = onAuth(render);
+  const off = () => { off0(); offCloud(); };
   const stop = () => { off(); removeEventListener('hashchange', stop); };
   addEventListener('hashchange', stop);
   await initAuth();
 }
 
-// 設定画面の小さな表示
 export function accountCardHtml() {
   return `<section class="card">
       <h2>Googleログイン・同期</h2>
-      <p><span class="badge">準備中（Sync-1）</span> まずGoogleログインができるかを確認します。データの同期はまだ行いません。</p>
+      <p><span class="badge">準備中（Sync-2-1）</span> Googleログインと、クラウドの状態の確認（読むだけ）ができます。データの同期はまだ行いません。</p>
       <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルでも行えます。（Firebase ${esc(FIREBASE_SDK_VERSION)}・無料のSparkプラン）</p>
       <a class="btn" href="#/account">Googleログインを開く</a>
     </section>`;
+}
+
+const STORE_JA = { projects: 'プロジェクト', specs: '仕様書', requests: '要望', compares: '3AI比較', files: 'ファイル', tests: 'テスト', urls: 'URL', issues: '未解決事項', ideas: '相談メモ', tasks: '次にやること', guides: '指示書', handoff: '引継ぎ', checks: '実機・公開確認', history: '変更履歴', trash: 'ゴミ箱', settings: '設定' };
+const when = iso => { try { return new Date(iso).toLocaleString('ja-JP'); } catch { return iso || ''; } };
+export function cloudResultHtml(r) {
+  const t = `<p class="muted">確認日時：${esc(when(r.checkedAt))}</p>`;
+  const err = r.error ? `<div class="notice ng" role="alert"><strong>${esc(r.error.title)}</strong><p>${esc(r.error.how)}</p>${r.uid ? `<p class="muted">このアカウントのユーザーID：<code class="uid">${esc(r.uid)}</code></p>` : ''}</div>` : '';
+  const counts = c => Object.keys(c || {}).length ? `<dl class="kv">${Object.entries(c).map(([k, v]) => `<dt>${esc(STORE_JA[k] || k)}</dt><dd>${esc(v)}件</dd>`).join('')}</dl>` : '';
+  switch (r.state) {
+    case 'signedOut': return `<p><span class="badge">未ログイン</span> Googleにログインしてから確認してください。</p>${t}`;
+    case 'empty': return `<p><span class="badge ok">接続できました</span> <span class="badge">クラウドは空です</span></p>
+      <p>まだ登録されていません。クラウドへのアクセスは許可されています。Factoryのデータはまだ1件も登録されていません。</p>${t}`;
+    case 'uploading': return `<p><span class="badge warn">登録途中</span> 初回登録が最後まで終わっていません。</p>
+      <p class="muted">登録元：${esc(r.sourceDevice || '不明')}${r.startedAt ? `・開始：${esc(when(r.startedAt))}` : ''}</p>${counts(r.counts)}${t}`;
+    case 'registered': return `<p><span class="badge ok">登録済み</span> クラウドにFactoryのデータが登録されています。</p>
+      <dl class="kv"><dt>登録元の端末</dt><dd>${esc(r.sourceDevice || '不明')}</dd><dt>登録日時</dt><dd>${esc(r.registeredAt ? when(r.registeredAt) : '不明')}</dd><dt>世代</dt><dd>${esc(r.generation ?? '不明')}</dd></dl>
+      ${r.projectNames?.length ? `<p>プロジェクト：${r.projectNames.map(esc).join('、')}</p>` : ''}${counts(r.counts)}${t}`;
+    case 'unknown': return `<p><span class="badge warn">確認が必要</span> クラウドに想定外の形の印があります。何も変更していません。この画面をClaudeに送ってください。</p>${t}`;
+    case 'denied': return `<p><span class="badge ng">許可されていません</span></p>${err}${t}`;
+    case 'offline': return `<p><span class="badge warn">オフライン</span></p>${err}${t}`;
+    default: return `<p><span class="badge ng">確認できませんでした</span></p>${err}${t}`;
+  }
 }
