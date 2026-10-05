@@ -17,10 +17,8 @@ const REQUIRED = ['apiKey', 'authDomain', 'projectId', 'appId'];
 
 const defaultLoader = async () => ({ app: await import(SDK_URLS.app), auth: await import(SDK_URLS.auth) });
 let loader = defaultLoader;
-// 自動テスト用：Firebase の代わりを差し込む／元に戻す
 export function _setLoader(fn) { loader = fn || defaultLoader; reset(); }
 
-// config/firebase.json の確認（公開されても問題ない接続情報。メールアドレス等の個人情報は入れない）
 export function checkFirebaseConfig(c) {
   if (!c || typeof c !== 'object') return { ok: false, reason: 'Firebaseの設定がまだです' };
   const missing = REQUIRED.filter(k => typeof c[k] !== 'string' || !c[k].trim());
@@ -38,7 +36,6 @@ export async function loadFirebaseConfig(url = new URL('../../config/firebase.js
   } catch { return null; }
 }
 
-// 画面に出すエラー文（何が起きたか＋どうすればいいか）
 const MESSAGES = {
   'auth/popup-blocked': ['ログイン画面がブロックされました', 'ブラウザがポップアップを止めています。もう一度「Googleでログイン」を押してください。続く場合は、ブラウザの設定でこのサイトのポップアップを許可してください。'],
   'auth/popup-closed-by-user': ['ログインが完了する前に画面が閉じられました', 'もう一度「Googleでログイン」を押し、アカウントを選んでください。'],
@@ -69,14 +66,14 @@ export function authErrorMessage(e, env = {}) {
   return { code, title, how };
 }
 
-// ---- 状態 ----
-// status: 'unconfigured'（設定待ち）| 'loading' | 'signedOut' | 'signedIn' | 'error'
 let state = { status: 'loading', user: null, error: null };
-let fb = null, auth = null, initPromise = null;
+let fb = null, auth = null, fbApp = null, initPromise = null;
 const listeners = new Set();
 const emit = patch => { state = { ...state, ...patch }; listeners.forEach(f => { try { f(state); } catch {} }); };
-function reset() { fb = null; auth = null; initPromise = null; state = { status: 'loading', user: null, error: null }; }
+function reset() { fb = null; auth = null; fbApp = null; initPromise = null; state = { status: 'loading', user: null, error: null }; }
 export const authState = () => state;
+export const firebaseApp = () => fbApp;
+export const currentUid = () => auth?.currentUser?.uid || null;
 export function onAuth(fn) { listeners.add(fn); fn(state); return () => listeners.delete(fn); }
 
 const summary = u => u ? { uid: u.uid, name: u.displayName || '', email: u.email || '', provider: (u.providerData?.[0]?.providerId) || 'google.com' } : null;
@@ -90,6 +87,7 @@ export function initAuth({ config } = {}) {
     try { fb = await loader(); }
     catch (e) { emit({ status: 'error', error: authErrorMessage({ code: 'sdk-load-failed' }) }); initPromise = null; return state; }
     const app = fb.app.getApps().find(a => a.name === 'factory-auth') || fb.app.initializeApp(cfg, 'factory-auth');
+    fbApp = app;
     auth = fb.auth.getAuth(app);
     try { auth.languageCode = 'ja'; } catch {}
     await new Promise(resolve => {
@@ -104,27 +102,23 @@ export function initAuth({ config } = {}) {
   return initPromise;
 }
 
-// この端末の状況（ログイン方法の判断に使う）
 export function envInfo(nav = (typeof navigator !== 'undefined' ? navigator : {}), mm = (typeof matchMedia === 'function' ? matchMedia : null)) {
   const ua = nav.userAgent || '';
   const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 1);
   const standalone = (mm ? mm('(display-mode: standalone)').matches : false) || nav.standalone === true;
   return { ios, standalone };
 }
-// ログイン方法：どの端末でもポップアップ方式（リダイレクト方式は使わない）。
-// iPhoneのホーム画面版はGoogleの画面が別に開くため、結果が戻らないときに備えて「待ち時間の上限」を設ける
 export function signInPlan(env = envInfo()) {
   return { method: 'popup', watchdogMs: env.ios && env.standalone ? 60000 : env.ios ? 120000 : 0 };
 }
 
-// ログイン。ポップアップはボタンを押した直後に開く必要がある（iPhone Safariの制限）ため、準備済みならすぐ呼ぶ
 export function signIn({ env = envInfo(), watchdogMs } = {}) {
   if (!auth) return initAuth().then(() => auth ? popupSignIn(env, watchdogMs) : state);
   return popupSignIn(env, watchdogMs);
 }
 function popupSignIn(env, watchdogMs) {
   const plan = signInPlan(env);
-  const limit = watchdogMs ?? globalThis.__FACTORY_TEST_WATCHDOG_MS ?? plan.watchdogMs; // 自動テストでは待ち時間を短くできる
+  const limit = watchdogMs ?? globalThis.__FACTORY_TEST_WATCHDOG_MS ?? plan.watchdogMs;
   let provider;
   try { provider = new fb.auth.GoogleAuthProvider(); provider.setCustomParameters({ prompt: 'select_account' }); }
   catch (e) { emit({ error: authErrorMessage(e, env) }); return Promise.resolve(state); }
@@ -136,7 +130,6 @@ function popupSignIn(env, watchdogMs) {
   });
   emit({ pending: true, error: null });
   if (!limit) return popup;
-  // 一定時間たっても結果が戻らないときは、画面を固まらせずに案内を出す（あとで結果が戻ればログイン済みに切り替わる）
   const watchdog = new Promise(resolve => setTimeout(() => {
     if (settled) return resolve(state);
     if (auth.currentUser) { emit({ status: 'signedIn', user: summary(auth.currentUser), error: null, pending: false }); return resolve(state); }
@@ -153,7 +146,6 @@ export async function signOut() {
   return state;
 }
 
-// この端末の種類（実機確認の記録用）
 export function deviceKind() {
   const ua = navigator.userAgent || '';
   const standalone = (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
