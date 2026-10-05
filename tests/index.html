@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Factory 自動テスト</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    body { padding-bottom: 24px; }
+    .row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; }
+    .row .mark { font-size: 1.1rem; width: 1.6em; flex: none; }
+    .row .name { font-weight: 700; }
+    .row .err { color: var(--ng); font-size: .85rem; word-break: break-word; }
+    .summary { font-size: 1.2rem; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="brand">自動テスト</div><div class="spacer"></div><a class="btn small" href="../">ホームへ</a></header>
+  <main>
+    <div class="notice">テストは本番データとは別の「テスト専用の保存領域」で行います。あなたのデータは変わりません。結果は引継ぎ情報に自動で記録されます。</div>
+    <section class="card">
+      <div id="summary" class="summary" role="status">実行中…</div>
+      <p class="muted" id="when"></p>
+      <button class="btn primary" id="rerun">もう一度実行する</button>
+    </section>
+    <section class="card"><div id="results"></div></section>
+  </main>
+  <script type="module" src="tests.js"></script>
+</body>
+</html>

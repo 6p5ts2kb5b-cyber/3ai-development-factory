@@ -1,0 +1,938 @@
+{
+  "masterVersion": 7,
+  "_note": "ステータス・カテゴリー等の設定値。コードに直書きせず、ここ（と設定画面）で変更します。",
+  "statuses": [
+    {
+      "key": "concept",
+      "label": "構想",
+      "order": 1
+    },
+    {
+      "key": "spec_draft",
+      "label": "仕様整理",
+      "order": 2
+    },
+    {
+      "key": "spec_fixed",
+      "label": "仕様確定",
+      "order": 3
+    },
+    {
+      "key": "implementing",
+      "label": "実装中",
+      "order": 4
+    },
+    {
+      "key": "testing",
+      "label": "テスト中",
+      "order": 5
+    },
+    {
+      "key": "usable",
+      "label": "使用可能",
+      "order": 6
+    },
+    {
+      "key": "complete",
+      "label": "完成",
+      "order": 7,
+      "requiresAllTestsPassed": true
+    },
+    {
+      "key": "improving",
+      "label": "改良中",
+      "order": 8
+    }
+  ],
+  "requestStatuses": [
+    {
+      "key": "unreviewed",
+      "label": "未検討",
+      "open": true
+    },
+    {
+      "key": "adopted",
+      "label": "採用",
+      "open": true
+    },
+    {
+      "key": "on_hold",
+      "label": "保留",
+      "open": true
+    },
+    {
+      "key": "rejected",
+      "label": "不採用",
+      "open": false
+    },
+    {
+      "key": "implemented",
+      "label": "実装済み",
+      "open": false
+    }
+  ],
+  "compareDecisions": [
+    {
+      "key": "adopt",
+      "label": "採用"
+    },
+    {
+      "key": "hold",
+      "label": "保留"
+    },
+    {
+      "key": "reject",
+      "label": "不採用"
+    }
+  ],
+  "aiList": [
+    {
+      "key": "chatgpt",
+      "label": "ChatGPT",
+      "roles": [
+        "要望整理",
+        "仕様統合",
+        "システム設計",
+        "アイデア整理",
+        "Claude/Gemini結果の比較",
+        "最終チェック",
+        "改善提案"
+      ]
+    },
+    {
+      "key": "claude",
+      "label": "Claude",
+      "roles": [
+        "主実装",
+        "コード作成",
+        "リファクタリング",
+        "バグ修正",
+        "技術設計",
+        "テスト対応"
+      ]
+    },
+    {
+      "key": "gemini",
+      "label": "Gemini",
+      "roles": [
+        "Google系サービス連携検討",
+        "日本語資料の読み取り",
+        "動画内容理解",
+        "画像・資料解析",
+        "別視点チェック"
+      ]
+    }
+  ],
+  "deliverableTypes": [
+    {
+      "key": "webapp",
+      "label": "Webアプリ"
+    },
+    {
+      "key": "excel",
+      "label": "Excel/VBA"
+    },
+    {
+      "key": "doc",
+      "label": "文書"
+    },
+    {
+      "key": "pdf",
+      "label": "PDF"
+    },
+    {
+      "key": "other",
+      "label": "その他"
+    }
+  ],
+  "progressAxes": [
+    {
+      "key": "planning",
+      "label": "企画"
+    },
+    {
+      "key": "spec",
+      "label": "仕様"
+    },
+    {
+      "key": "ui",
+      "label": "UI"
+    },
+    {
+      "key": "data",
+      "label": "データ"
+    },
+    {
+      "key": "impl",
+      "label": "実装"
+    },
+    {
+      "key": "test",
+      "label": "テスト"
+    },
+    {
+      "key": "handoff",
+      "label": "解説/引継ぎ"
+    },
+    {
+      "key": "release",
+      "label": "公開/使用開始"
+    }
+  ],
+  "testResults": [
+    {
+      "key": "untested",
+      "label": "未実施"
+    },
+    {
+      "key": "pass",
+      "label": "合格"
+    },
+    {
+      "key": "fail",
+      "label": "不合格"
+    }
+  ],
+  "fixStatuses": [
+    {
+      "key": "none",
+      "label": "不要"
+    },
+    {
+      "key": "todo",
+      "label": "未修正"
+    },
+    {
+      "key": "doing",
+      "label": "修正中"
+    },
+    {
+      "key": "fixed",
+      "label": "修正済み"
+    }
+  ],
+  "fileTypes": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "JSON",
+    "Markdown",
+    "Excel/VBA",
+    "文書",
+    "PDF",
+    "画像",
+    "その他"
+  ],
+  "commonTests": [
+    "新規登録",
+    "保存",
+    "再読込",
+    "編集",
+    "検索/絞込み",
+    "削除確認",
+    "復元",
+    "印刷/共有",
+    "スマホ表示",
+    "PC表示",
+    "誤入力",
+    "エラー時",
+    "データ保持"
+  ],
+  "sync": {
+    "enabled": false,
+    "_note": "自動同期は任意機能。後のPhaseで追加。localOnly=true のレコードと学校実データは同期対象外。"
+  },
+  "issueStatuses": [
+    {
+      "key": "open",
+      "label": "未解決"
+    },
+    {
+      "key": "resolved",
+      "label": "解決済み"
+    }
+  ],
+  "ideaStatuses": [
+    {
+      "key": "new",
+      "label": "相談中"
+    },
+    {
+      "key": "project_created",
+      "label": "プロジェクト化済み"
+    },
+    {
+      "key": "archived",
+      "label": "見送り"
+    }
+  ],
+  "deliverableHints": [
+    {
+      "type": "excel",
+      "label": "Excel/VBA",
+      "words": [
+        "エクセル",
+        "Excel",
+        "表計算",
+        "集計",
+        "マクロ",
+        "VBA",
+        "スプレッドシート"
+      ],
+      "reason": "表で集計・計算する内容が中心なら、Excelが手軽です"
+    },
+    {
+      "type": "doc",
+      "label": "文書",
+      "words": [
+        "文書",
+        "お知らせ",
+        "案内文",
+        "手紙",
+        "プリント",
+        "配布",
+        "マニュアル",
+        "説明書"
+      ],
+      "reason": "読む・配る文書が中心なら、文書作成が向いています"
+    },
+    {
+      "type": "pdf",
+      "label": "PDF",
+      "words": [
+        "PDF",
+        "印刷用",
+        "配布用",
+        "保存用",
+        "印刷"
+      ],
+      "reason": "内容を固定して配る・保存するならPDFが向いています"
+    },
+    {
+      "type": "webapp",
+      "label": "Webアプリ",
+      "words": [
+        "アプリ",
+        "スマホ",
+        "iPhone",
+        "管理",
+        "記録",
+        "登録",
+        "検索",
+        "地図",
+        "予定",
+        "カレンダー",
+        "共有"
+      ],
+      "reason": "スマホで入力・検索・管理するならWebアプリが向いています"
+    }
+  ],
+  "promptGuide": {
+    "privacyWarningWords": [
+      "住所",
+      "保護者",
+      "児童",
+      "出席番号",
+      "名簿",
+      "学籍番号",
+      "成績",
+      "氏名",
+      "生年月日",
+      "生徒",
+      "電話"
+    ],
+    "commonFooter": "※無料運用を最優先し、有料APIや有料サービスが必要な場合は理由と料金を先に示してください。\n※確定していない案は「提案」として出し、勝手に仕様を決めないでください。"
+  },
+  "taskStatuses": [
+    {
+      "key": "todo",
+      "label": "未着手",
+      "open": true
+    },
+    {
+      "key": "doing",
+      "label": "進行中",
+      "open": true
+    },
+    {
+      "key": "done",
+      "label": "完了",
+      "open": false
+    },
+    {
+      "key": "hold",
+      "label": "保留",
+      "open": false
+    }
+  ],
+  "taskPriorities": [
+    {
+      "key": "high",
+      "label": "高",
+      "order": 1
+    },
+    {
+      "key": "medium",
+      "label": "中",
+      "order": 2
+    },
+    {
+      "key": "low",
+      "label": "低",
+      "order": 3
+    }
+  ],
+  "taskAssignees": [
+    {
+      "key": "user",
+      "label": "あなた"
+    },
+    {
+      "key": "chatgpt",
+      "label": "ChatGPT"
+    },
+    {
+      "key": "claude",
+      "label": "Claude"
+    },
+    {
+      "key": "gemini",
+      "label": "Gemini"
+    }
+  ],
+  "issueSeverities": [
+    {
+      "key": "high",
+      "label": "重要",
+      "order": 1
+    },
+    {
+      "key": "medium",
+      "label": "普通",
+      "order": 2
+    },
+    {
+      "key": "low",
+      "label": "軽微",
+      "order": 3
+    }
+  ],
+  "targetDevices": [
+    {
+      "key": "iphone",
+      "label": "iPhone"
+    },
+    {
+      "key": "smartphone",
+      "label": "スマホブラウザ"
+    },
+    {
+      "key": "pc",
+      "label": "PC"
+    },
+    {
+      "key": "schoolpc",
+      "label": "学校Windows PC"
+    },
+    {
+      "key": "other",
+      "label": "その他"
+    }
+  ],
+  "projectGroups": [
+    {
+      "key": "active",
+      "label": "進行中",
+      "statuses": [
+        "concept",
+        "spec_draft",
+        "spec_fixed",
+        "implementing",
+        "testing"
+      ]
+    },
+    {
+      "key": "inuse",
+      "label": "使用中",
+      "statuses": [
+        "usable"
+      ]
+    },
+    {
+      "key": "complete",
+      "label": "完成",
+      "statuses": [
+        "complete"
+      ]
+    },
+    {
+      "key": "improving",
+      "label": "改良中",
+      "statuses": [
+        "improving"
+      ]
+    }
+  ],
+  "progressRanges": [
+    {
+      "key": "p0",
+      "label": "0〜29%",
+      "min": 0,
+      "max": 29
+    },
+    {
+      "key": "p30",
+      "label": "30〜69%",
+      "min": 30,
+      "max": 69
+    },
+    {
+      "key": "p70",
+      "label": "70〜99%",
+      "min": 70,
+      "max": 99
+    },
+    {
+      "key": "p100",
+      "label": "100%",
+      "min": 100,
+      "max": 100
+    }
+  ],
+  "updatedRanges": [
+    {
+      "key": "today",
+      "label": "今日",
+      "days": 0
+    },
+    {
+      "key": "week",
+      "label": "7日以内",
+      "days": 7
+    },
+    {
+      "key": "month",
+      "label": "30日以内",
+      "days": 30
+    },
+    {
+      "key": "older",
+      "label": "30日より前",
+      "days": -30
+    }
+  ],
+  "specStatuses": [
+    {
+      "key": "draft",
+      "label": "変更案（未確定）"
+    },
+    {
+      "key": "fixed",
+      "label": "確定"
+    }
+  ],
+  "compareStatuses": [
+    {
+      "key": "open",
+      "label": "回答待ち・検討中"
+    },
+    {
+      "key": "decided",
+      "label": "結論あり"
+    }
+  ],
+  "fileStatuses": [
+    {
+      "key": "active",
+      "label": "使用中"
+    },
+    {
+      "key": "old",
+      "label": "旧版"
+    },
+    {
+      "key": "draft",
+      "label": "試作"
+    },
+    {
+      "key": "hold",
+      "label": "保留"
+    }
+  ],
+  "urlKinds": [
+    {
+      "key": "web",
+      "label": "Webページ"
+    },
+    {
+      "key": "youtube",
+      "label": "YouTube"
+    },
+    {
+      "key": "x",
+      "label": "X"
+    },
+    {
+      "key": "instagram",
+      "label": "Instagram"
+    },
+    {
+      "key": "other",
+      "label": "その他"
+    }
+  ],
+  "outputFormats": [
+    "見出し付きの箇条書き",
+    "比較表（案ごとの長所・短所）",
+    "手順（初心者向け・番号付き）",
+    "コード（ファイル名ごと・全文）",
+    "はい/いいえ＋理由"
+  ],
+  "aiRoleSummary": {
+    "chatgpt": "要望整理・仕様統合・設計・最終チェック",
+    "claude": "主実装・コード・修正・技術設計",
+    "gemini": "Google系・日本語資料・YouTube/動画理解・別視点チェック"
+  },
+  "aiRecommend": [
+    {
+      "statuses": [
+        "concept",
+        "spec_draft"
+      ],
+      "ai": "chatgpt",
+      "reason": "仕様を整理する段階です。要望整理・仕様統合はChatGPTが得意です"
+    },
+    {
+      "statuses": [
+        "spec_fixed",
+        "implementing"
+      ],
+      "ai": "claude",
+      "reason": "仕様が決まり実装する段階です。コード作成・技術設計はClaudeが得意です"
+    },
+    {
+      "statuses": [
+        "testing"
+      ],
+      "ai": "claude",
+      "reason": "テスト中です。バグ修正・テスト対応はClaude、最終チェックはChatGPTが向いています"
+    },
+    {
+      "statuses": [
+        "usable",
+        "complete",
+        "improving"
+      ],
+      "ai": "chatgpt",
+      "reason": "使い始めた段階です。改善提案・最終チェックはChatGPTが得意です"
+    }
+  ],
+  "aiRecommendYoutube": {
+    "ai": "gemini",
+    "reason": "要約していないYouTubeのURLがあります。動画内容の確認はGeminiが得意です"
+  },
+  "testStatuses": [
+    {
+      "key": "untested",
+      "label": "未実施"
+    },
+    {
+      "key": "pass",
+      "label": "合格"
+    },
+    {
+      "key": "fail",
+      "label": "不合格"
+    },
+    {
+      "key": "fixing",
+      "label": "修正中"
+    },
+    {
+      "key": "retest",
+      "label": "再テスト待ち"
+    }
+  ],
+  "testCategories": [
+    "基本操作",
+    "データ",
+    "表示",
+    "エラー処理",
+    "印刷・共有",
+    "バックアップ",
+    "その他"
+  ],
+  "commonTestTemplate": [
+    {
+      "name": "新規登録",
+      "category": "基本操作",
+      "check": "新しいデータを登録する",
+      "expected": "登録したデータが一覧に表示される"
+    },
+    {
+      "name": "保存",
+      "category": "基本操作",
+      "check": "入力して保存する",
+      "expected": "「保存しました」と表示され、内容が保存される"
+    },
+    {
+      "name": "再読込",
+      "category": "データ",
+      "check": "画面を再読み込み（アプリを開き直す）",
+      "expected": "保存した内容が残っている"
+    },
+    {
+      "name": "編集",
+      "category": "基本操作",
+      "check": "登録済みのデータを編集して保存する",
+      "expected": "変更が反映され、変更履歴に残る"
+    },
+    {
+      "name": "検索",
+      "category": "基本操作",
+      "check": "名前などの言葉で検索する",
+      "expected": "該当するデータだけが表示される"
+    },
+    {
+      "name": "絞り込み",
+      "category": "基本操作",
+      "check": "状態などで絞り込む",
+      "expected": "条件に合うデータだけが表示される"
+    },
+    {
+      "name": "削除確認",
+      "category": "基本操作",
+      "check": "削除ボタンを押す",
+      "expected": "確認画面が出て、キャンセルすると消えない"
+    },
+    {
+      "name": "復元（ゴミ箱）",
+      "category": "データ",
+      "check": "削除したデータをゴミ箱から元に戻す",
+      "expected": "削除前と同じ内容で戻る"
+    },
+    {
+      "name": "印刷／共有",
+      "category": "印刷・共有",
+      "check": "印刷・共有を行う",
+      "expected": "見やすい形で印刷・共有できる"
+    },
+    {
+      "name": "スマホ表示",
+      "category": "表示",
+      "check": "iPhone等で全画面を開く",
+      "expected": "横にはみ出さず、ボタンが押しやすい"
+    },
+    {
+      "name": "PC表示",
+      "category": "表示",
+      "check": "PC・学校PCで全画面を開く",
+      "expected": "レイアウトが崩れない"
+    },
+    {
+      "name": "誤入力",
+      "category": "エラー処理",
+      "check": "必須項目を空にしたり、形式違いを入力して保存する",
+      "expected": "分かりやすい注意が出て、保存されない"
+    },
+    {
+      "name": "エラー処理",
+      "category": "エラー処理",
+      "check": "通信できない・データがない等の状況で操作する",
+      "expected": "分かりやすいメッセージが出て、他のデータに影響しない"
+    },
+    {
+      "name": "データ保持",
+      "category": "データ",
+      "check": "数日後に開く・端末を再起動する",
+      "expected": "データが消えていない"
+    },
+    {
+      "name": "バックアップ",
+      "category": "バックアップ",
+      "check": "バックアップを保存する",
+      "expected": "ファイルが保存される"
+    },
+    {
+      "name": "復元（バックアップ）",
+      "category": "バックアップ",
+      "check": "保存したバックアップから復元する",
+      "expected": "バックアップした時点の内容に戻る"
+    }
+  ],
+  "deviceCheckStatuses": [
+    {
+      "key": "unchecked",
+      "label": "未確認"
+    },
+    {
+      "key": "pass",
+      "label": "合格"
+    },
+    {
+      "key": "fail",
+      "label": "不合格"
+    },
+    {
+      "key": "recheck",
+      "label": "再確認待ち"
+    }
+  ],
+  "defaultDevices": [
+    "iPhone",
+    "自宅PC",
+    "学校Windows PC"
+  ],
+  "accessResults": [
+    {
+      "key": "unchecked",
+      "label": "未確認"
+    },
+    {
+      "key": "ok",
+      "label": "アクセスできた"
+    },
+    {
+      "key": "school_blocked",
+      "label": "学校ネットワークで利用不可"
+    },
+    {
+      "key": "not_published",
+      "label": "公開されていない（404等）"
+    },
+    {
+      "key": "error",
+      "label": "その他のエラー"
+    }
+  ],
+  "checkYesNo": [
+    {
+      "key": "unchecked",
+      "label": "未確認"
+    },
+    {
+      "key": "ok",
+      "label": "できた"
+    },
+    {
+      "key": "ng",
+      "label": "できない"
+    }
+  ],
+  "accessEnvironments": [
+    "自宅のネット",
+    "スマホ回線",
+    "学校のネットワーク",
+    "その他"
+  ],
+  "initialProjects": [
+    {
+      "no": 1,
+      "name": "Vintage Hunt",
+      "match": [
+        "Vintage Hunt"
+      ]
+    },
+    {
+      "no": 2,
+      "name": "STORM／連合チーム予定管理",
+      "match": [
+        "STORM"
+      ]
+    },
+    {
+      "no": 3,
+      "name": "野球教材動画＋練習メニュー",
+      "match": [
+        "教材",
+        "練習メニュー"
+      ]
+    },
+    {
+      "no": 4,
+      "name": "学校 出欠・行事・三者面談管理",
+      "match": [
+        "出欠",
+        "面談"
+      ]
+    },
+    {
+      "no": 5,
+      "name": "野球部会計",
+      "match": [
+        "会計"
+      ]
+    },
+    {
+      "no": 6,
+      "name": "家族スケジュール・タスク管理",
+      "match": [
+        "家族"
+      ]
+    },
+    {
+      "no": 7,
+      "name": "健康・減量管理",
+      "match": [
+        "健康",
+        "減量"
+      ]
+    }
+  ],
+  "projectOrigins": [
+    {
+      "key": "unknown",
+      "label": "既存アプリ：未確認"
+    },
+    {
+      "key": "new",
+      "label": "新しく作る"
+    },
+    {
+      "key": "existing",
+      "label": "既存アプリ取込"
+    },
+    {
+      "key": "factory",
+      "label": "Factory本体"
+    }
+  ],
+  "importStatuses": [
+    {
+      "key": "waiting",
+      "label": "既存アプリあり／取込待ち"
+    },
+    {
+      "key": "imported",
+      "label": "取込済み"
+    }
+  ],
+  "coverageStatuses": [
+    {
+      "key": "unjudged",
+      "label": "未判定"
+    },
+    {
+      "key": "done",
+      "label": "実装済み"
+    },
+    {
+      "key": "partial",
+      "label": "一部実装済み"
+    },
+    {
+      "key": "todo",
+      "label": "未実装"
+    },
+    {
+      "key": "diff",
+      "label": "仕様と実装が違う"
+    }
+  ],
+  "publishStates": [
+    "公開中",
+    "一部の人だけ",
+    "非公開・停止中",
+    "不明"
+  ]
+}
