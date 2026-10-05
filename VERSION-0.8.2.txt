@@ -1,0 +1,7 @@
+3AI Development Factory v0.8.2（Sync-2-1：クラウドの状態を確認・読み取りのみ）
+- 設定画面の表示：Factory v0.8.2
+- sw.js：const CACHE = 'factory-v10';
+- Googleログイン画面に「クラウドの状態を確認」を追加（users/{UID}/meta/factory を1件読むだけ）
+- Firestoreへは書き込まない。Factoryのデータは送受信しない
+- Firebase SDK 12.8.0（ポップアップ方式のみ）
+このファイルがGitHubの一覧に表示されていれば、v0.8.2のファイルがアップロードされています。
