@@ -19,7 +19,7 @@ import { FACTORY_ID } from './db.js';
 import { safeCopy } from './views/safecopy.js';
 
 import { accountView, accountCardHtml } from './views/account.js';
-export const APP_VERSION = '0.8.1';
+export const APP_VERSION = '0.8.2';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -40,7 +40,6 @@ async function boot() {
   try { handoff = await loadHandoff(); } catch { handoff = null; }
   if (handoff) { const b = document.getElementById('phase-badge'); b.textContent = handoff.phase; b.title = `${handoff.phase}：${handoff.phaseStatus}`; }
 
-  // 端末のデータが自動削除されにくくする（iPhoneはホーム画面に追加すると有効）
   try { if (navigator.storage?.persist) await navigator.storage.persist(); } catch {}
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -54,22 +53,19 @@ async function boot() {
   route();
 }
 
-// 画面部品へ渡す共通情報
 const ctx = {
   get db() { return db; },
   get master() { return master; },
   refresh: () => route({ keepScroll: true }),
 };
 
-// ---------- 画面切替 ----------
 const routes = {
   '/': () => homeView(ctx, view, params()), '/system': home, '/backup': backup, '/trash': trash, '/handoff': handoffView, '/settings': settings,
   '/talk': () => talkView(ctx, view), '/requests': () => requestsView(ctx, view, params()),
   '/v1': () => v1View(ctx, view, { loadHandoff }),
-  '/account': () => accountView(view), // Sync-1：Googleログインだけ（データは送受信しない）
+  '/account': () => accountView(view),
 };
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
-// メニューのどこを選択中にするか
 const NAV_OF = { '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
 async function route({ keepScroll = false } = {}) {
   const path = (location.hash.replace(/^#/, '') || '/').split('?')[0];
@@ -97,7 +93,6 @@ async function storageInfo() {
 }
 const mb = n => n == null ? '不明' : (n / 1024 / 1024).toFixed(1) + ' MB';
 
-// ---------- ホーム（Phase 1 基盤確認）----------
 async function home() {
   const counts = {};
   for (const s of [...DATA_STORES, 'history', 'trash']) counts[s] = await db.count(s);
@@ -143,7 +138,6 @@ async function home() {
     </section>`;
 }
 
-// ---------- バックアップ / 復元 ----------
 async function backup() {
   const lastBackup = (await db.get('settings', 'lastBackup'))?.value;
   view.innerHTML = `
@@ -197,8 +191,6 @@ async function backup() {
   };
 }
 
-// ---------- ゴミ箱 ----------
-// Phase 3：プロジェクトは関連データとまとめて1件で表示。完全削除は明確な確認つき
 async function trash() {
   const items = await db.listTrash();
   const title = r => r.record?.name || r.record?.title || r.record?.topic || r.record?.fileName || r.record?.item || r.record?.url || r.recordId;
@@ -225,7 +217,6 @@ async function trash() {
   });
 }
 
-// ---------- 引継ぎ（Factory全体）----------
 async function handoffView() {
   if (!handoff) { view.innerHTML = errorHtml(new Error('引継ぎファイル（config/handoff.json）を読み込めませんでした')); return; }
   const lastTest = (await db.get('settings', 'lastTestRun'))?.value;
@@ -246,7 +237,6 @@ async function handoffView() {
     ${handoff.rules?.length ? `<section class="card"><h2>重要な設計ルール</h2><ul>${handoff.rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
     <section class="card"><h2>テスト結果（この端末での最新）</h2>${lastTest ? `<p>${fmtDate(lastTest.runAt)}：合格 ${lastTest.passed} / ${lastTest.total}</p>` : '<p class="muted">まだこの端末で実行していません。</p>'}</section>
     <details class="card"><summary>Markdown全文</summary><pre class="md">${esc(md)}</pre></details>`;
-  // Factory全体の引継ぎはFactoryが作る文章（利用者の個人データを含まない）ので、そのままコピー
   document.getElementById('copy-md').onclick = async () => toast(await copyText(md) ? 'コピーしました' : 'コピーできませんでした。下の全文を長押しして選択してください');
   document.getElementById('dl-md').onclick = () => {
     const a = document.createElement('a');
@@ -255,7 +245,6 @@ async function handoffView() {
   };
 }
 
-// ---------- 設定 ----------
 async function settings() {
   const st = await storageInfo();
   view.innerHTML = `<h1>設定</h1>
