@@ -4,7 +4,7 @@ import { esc, toast, copyText } from '../ui.js';
 import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 
-const NOTE = 'この段階（Sync-2-1）では、Googleログインと「クラウドの状態の確認（読むだけ）」ができます。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
+const NOTE = 'この段階（Sync-2-2）では、Googleログイン・「クラウドの状態の確認（読むだけ）」・「同期の予行演習（確認だけ）」ができます。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
 
 export async function accountView(view) {
   view.innerHTML = `<h1>Googleログイン</h1>
@@ -16,7 +16,12 @@ export async function accountView(view) {
       <div id="cloud-result"><p><span class="badge">まだ確認していません</span></p></div>
       <button class="btn" id="cloud-check" disabled>クラウドの状態を確認</button>
       <p class="muted" id="cloud-hint">Googleにログインすると確認できます。</p>
-      <p class="muted">複数の端末で同じデータを使う同期（初回登録・取り込み）は、この確認が各端末で合格してから、段階ごとに追加します。</p>
+      <p class="muted">複数の端末で同じデータを使う同期（初回登録・取り込み）は、段階ごとに追加します。</p>
+    </section>
+    <section class="card" id="dry-card">
+      <h2>同期の予行演習（確認だけ）</h2>
+      <p class="muted">初回登録で何を何件送ることになるかを、この端末について調べます。クラウドへは送りません。ログインしていなくても確認できます。</p>
+      <a class="btn" href="#/sync-check">同期の予行演習を開く</a>
     </section>`;
   const card = view.querySelector('#acc-card');
   let busy = false;
@@ -78,9 +83,9 @@ export async function accountView(view) {
 export function accountCardHtml() {
   return `<section class="card">
       <h2>Googleログイン・同期</h2>
-      <p><span class="badge">準備中（Sync-2-1）</span> Googleログインと、クラウドの状態の確認（読むだけ）ができます。データの同期はまだ行いません。</p>
+      <p><span class="badge">準備中（Sync-2-2）</span> Googleログイン、クラウドの状態の確認（読むだけ）、同期の予行演習（確認だけ）ができます。データの同期はまだ行いません。</p>
       <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルでも行えます。（Firebase ${esc(FIREBASE_SDK_VERSION)}・無料のSparkプラン）</p>
-      <a class="btn" href="#/account">Googleログインを開く</a>
+      <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a></div>
     </section>`;
 }
 
