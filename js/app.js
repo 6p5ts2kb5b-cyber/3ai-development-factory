@@ -18,7 +18,8 @@ import { label as mlabel } from './master.js';
 import { FACTORY_ID } from './db.js';
 import { safeCopy } from './views/safecopy.js';
 
-export const APP_VERSION = '0.7.0';
+import { accountView, accountCardHtml } from './views/account.js';
+export const APP_VERSION = '0.8.0';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -65,10 +66,11 @@ const routes = {
   '/': () => homeView(ctx, view, params()), '/system': home, '/backup': backup, '/trash': trash, '/handoff': handoffView, '/settings': settings,
   '/talk': () => talkView(ctx, view), '/requests': () => requestsView(ctx, view, params()),
   '/v1': () => v1View(ctx, view, { loadHandoff }),
+  '/account': () => accountView(view), // Sync-1：Googleログインだけ（データは送受信しない）
 };
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
 // メニューのどこを選択中にするか
-const NAV_OF = { '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
+const NAV_OF = { '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
 async function route({ keepScroll = false } = {}) {
   const path = (location.hash.replace(/^#/, '') || '/').split('?')[0];
   const seg = path.split('/').filter(Boolean);
@@ -266,11 +268,7 @@ async function settings() {
         <button class="btn primary">保存</button>
       </form>
     </section>
-    <section class="card">
-      <h2>自動同期（iPhone ⇄ PC）</h2>
-      <p><span class="badge">準備中</span> 後のPhaseで追加します。採用前に「選んだ理由・無料枠でどこまで使えるか・将来の移行方法」をご確認いただきます。</p>
-      <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルで行えます。</p>
-    </section>
+    ${accountCardHtml()}
     <section class="card">
       <h2>この端末の保存状況</h2>
       <dl class="kv">

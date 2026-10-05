@@ -1,0 +1,72 @@
+# 複数端末同期の設計（Firebase Authentication ＋ Cloud Firestore・Sparkプラン）
+
+2026-10-05 ユーザー承認。段階ごとに実機確認してから次へ進む。
+
+| 段階 | 内容 | 状態 |
+|---|---|---|
+| Sync-1 | Googleログインだけ（Factoryのデータは送受信しない） | 実装済み・Firebase設定待ち・実機確認待ち |
+| Sync-2 | 学校Surfaceからクラウドへの初回登録（事前に自動バックアップ） | 未着手（Sync-1の実機確認 Surface → iPhoneホーム画面版 が両方合格してから） |
+| Sync-3 | 双方向の同期 | 未着手 |
+| Sync-4 | オフライン・競合・同期状態の表示 | 未着手 |
+| Sync-5 | 通しテスト（Surface → iPhone → オフライン → JSONバックアップ、空の端末がクラウドを消せないこと） | 未着手 |
+
+## 変えないこと
+- IndexedDB（端末内）が正本。削除しない。オフラインでも全機能が動く
+- JSONバックアップ／復元、GitHub Pages公開、PWA、既存の自動テストを維持
+- 学校の生徒・保護者などの実データは同期しない（Factoryはアプリを作るための情報だけを扱う。`localOnly: true` の記録は送らない）
+- 有料APIは使わない。Blazeプランへ変更しない
+
+## Sync-1（実装済み）
+- `js/sync/auth.js`：Firebase Authentication（Googleログイン・ポップアップ方式）。**db.js を読み込まず、Factoryのデータベースに一切触れない**（自動テストで確認）
+- Firebase SDK 12.19.0 を公式配布元（www.gstatic.com）から、ログイン画面を開いたときだけ読み込む。起動時には読み込まない
+- ログイン状態は Firebase が別のデータベース（firebaseLocalStorageDb）に保存する
+- `config/firebase.json`：Firebaseの接続情報（公開されても問題ない値）。メールアドレス等の個人情報は入れない（入っていると読み込みを拒否）
+- 画面：設定 →「Googleログインを開く」（`#/account`）。名前・Googleアカウント・ユーザーID・端末の種類を表示。ログアウト可。エラーは日本語で理由と対処を表示
+
+## 「自分のアカウントだけ」に制限する方法（メールアドレスをコードに書かない）
+Security Rules には、メールアドレスもユーザーIDも書かない。代わりに「許可された利用者の一覧」をFirebaseの画面で作る。
+
+1. Sync-1で各端末にログインできたら、Factoryの「Googleログイン」画面に出る **ユーザーID** をコピーする
+2. Firebase Console の Firestore で、`owners` というコレクションに、そのユーザーIDを名前にした空のドキュメントを1つ作る（Firebase Consoleからの書き込みはルールの対象外なので、アプリからは作れない）
+3. Security Rules は「`owners/{自分のID}` が存在する人だけ、自分の場所（`users/{自分のID}`）を読み書きできる」とする
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && exists(/databases/$(db)/documents/owners/$(request.auth.uid));
+    }
+    match /owners/{id} { allow read, write: if false; }        // アプリからは読み書き不可
+    match /users/{uid}/{doc=**} {
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;                                  // クラウドからの削除は禁止
+    }
+  }
+}
+```
+- 他人がURLを知っていてGoogleでログインしても、`owners` に登録されていないので、Factoryのデータを読むことも書くこともできない
+- Rules は Firebase Console に保存され、GitHubには置かない（テンプレートにも個人情報は含まない）
+- Firestoreを使い始めるのは Sync-2 から。Sync-1では Firestore を作るだけで、アプリからは接続しない
+
+## 無料枠（Sparkプラン）の扱い（Firebase公式の記載に合わせた表現）
+- 支払い情報なしで使える（公式：「No payment information needed to get started or to use only the no-cost Firebase products」）
+- Cloud Firestore の無料枠：保存 1GiB、読み取り 5万件／日、書き込み 2万件／日、削除 2万件／日、転送 10GiB／月。1件の最大サイズは 1MiB
+- 1日ごとの無料枠は「米国太平洋時間の午前0時ごろにリセット」（公式：「Quotas are applied daily and reset around midnight Pacific time」）。日本時間では夏時間の有無で変わるため、決まった時刻は表示しない
+- Sparkプランで無料枠を超えた場合、その製品（Firestore）の利用が止まる。公式の料金プランのページには「月の無料枠を超えた場合、その月の残りの期間、その製品の利用が止まる」と書かれている。**いつ再開するかは断定しない**
+- 止まっている間も、Factoryは端末内のデータで今までどおり使える（同期だけが止まる）。料金は発生しない（Sparkプランには支払い情報が登録されていないため）
+- Factoryの使い方では無料枠の数%程度の見込み。Sync-4 で、当日の書き込み数が目安を超えそうなときに事前に警告する
+
+## 以降の段階の要点（承認済みの設計）
+- Firestoreの構造：`users/{uid}/meta/factory`（クラウド登録済みの印）、`users/{uid}/{保存先}/{id}`（IndexedDBの1件＝1件）
+- 初回同期：この端末とクラウドの状態で4通りに分ける。**空の端末からは何も送らない**。クラウドが空でこの端末にデータがある場合だけ「この端末のデータをクラウドへ登録」を表示し、押したときだけ登録（事前に自動バックアップ）
+- 削除は「削除の印」で表し、利用者が実際に削除操作をしたときだけ送る。Rulesでクラウドからの削除を禁止
+- 競合：rev（更新番号）で確認。違う項目は自動で合わせ、同じ項目は両方残して利用者が選ぶ。変更履歴は追加だけなので両端末分が残る
+- 同期状態：同期済み／同期中／オフライン（端末に保存済み）／同期エラー＋最終同期日時を常に表示
+
+## 出典
+- Firebase pricing plans: https://firebase.google.com/docs/projects/billing/firebase-pricing-plans
+- Cloud Firestore quotas: https://firebase.google.com/docs/firestore/quotas
+- signInWithRedirect best practices（GitHub Pages等ではポップアップ方式を推奨）: https://firebase.google.com/docs/auth/web/redirect-best-practices
+- Add Firebase using CDN: https://firebase.google.com/docs/web/alt-setup

@@ -1,0 +1,11 @@
+{
+  "_note": "Firebaseの接続情報（公開されても問題ない値。データはSecurity Rulesで守る）。メールアドレス等の個人情報は入れない。Sync-1ではAuthentication（Googleログイン）だけに使い、Firestoreには接続しない。",
+  "config": {
+    "apiKey": "AIzaSyDphH-87ROTJiBLJw6DxQLqB8wauDbzmKE",
+    "authDomain": "factory-5b335.firebaseapp.com",
+    "projectId": "factory-5b335",
+    "storageBucket": "factory-5b335.firebasestorage.app",
+    "messagingSenderId": "906129274581",
+    "appId": "1:906129274581:web:5b9ee5f051e18c5e11d45c"
+  }
+}

@@ -1,0 +1,6 @@
+3AI Development Factory v0.8.0（Sync-1：Googleログインだけ）
+- 設定画面の表示：Factory v0.8.0
+- sw.js：const CACHE = 'factory-v8';
+- config/firebase.json：Factory用Firebase（factory-5b335）
+- Factoryのデータは送受信しない（Firestoreには接続しない）
+このファイルがGitHubの一覧に表示されていれば、v0.8.0のファイルがアップロードされています。

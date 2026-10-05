@@ -13,6 +13,11 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
     const done = String(ph.status || '').startsWith('完了');
     items.push({ group: '仕様・開発', label: `Phase ${ph.no} ${ph.name}`, ok: done, detail: ph.status || '未着手', how: done ? '' : ph.no === 7 ? '7つの実案件をFactoryに登録します（Claudeが実装）' : '開発を進めます（Claudeが実装）' });
   }
+  // 2026-10-05 方針変更：複数端末同期もv1完成の条件
+  for (const st of handoff?.sync?.stages || []) {
+    const done = String(st.status || '').startsWith('完了');
+    items.push({ group: '複数端末同期', label: `${st.key} ${st.name}`, ok: done, detail: st.status || '未着手', how: done ? '' : st.key === 'Sync-1' ? 'Firebaseの設定（Claudeが1画面ずつ案内）の後、学校Surface → iPhoneホーム画面版の順にGoogleログインを確認します' : '前の段階の実機確認が合格してから、Claudeが実装します' });
+  }
   const found = (m.initialProjects || []).map(ip => ({ ...ip, hit: projects.some(p => ip.match.some(k => p.name.includes(k))) }));
   const n = found.filter(x => x.hit).length;
   items.push({ group: '仕様・開発', label: '7案件の登録', ok: n === found.length, detail: `${n}/${found.length} 件登録${n < found.length ? `（未登録：${found.filter(x => !x.hit).map(x => x.name).join('、')}）` : ''}`, how: 'ホームまたはこの画面の「Factory本体＋7プロジェクトを登録」を押してください' });

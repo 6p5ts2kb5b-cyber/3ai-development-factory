@@ -18,6 +18,7 @@ import { v1Items } from '../js/views/v1.js';
 import { PROJECT_CHILD_STORES } from '../js/db.js';
 import { loadInitialProjects, seedInitialProjects, seedStatus, seededCount } from '../js/seed.js';
 import { specItems, coverageSummary } from '../js/logic.js';
+import * as SyncAuth from '../js/sync/auth.js';
 
 const TEST_DB = 'factory-test';
 const T = [];
@@ -999,7 +1000,7 @@ test('【P6】プロジェクト別引継ぎ・Factory全体引継ぎ・v1完成
   const undone = v1Items({ handoff: { phases: [{ no: 8, name: '未着手の例', status: '未着手' }] }, projects: [], devices: [], publish: [], lastTest: null, lastBackup: null }, m).find(i => i.label.includes('Phase 8'));
   eq([undone.ok, !!undone.how], [false, true], '未完了のPhaseは⬜で何をすればいいかを表示');
   eq([get('7案件').ok, get('7案件').detail.startsWith('2/7')], [false, true], '7案件');
-  eq([get('iPhone').ok, get('学校Windows PC').ok], [true, false], '実機確認');
+  eq([get('iPhone の実機確認').ok, get('学校Windows PC の実機確認').ok], [true, false], '実機確認');
   eq(get('学校ネットワーク').ok, false, '学校ネットワークで利用不可を表示');
   eq([get('自動テスト').ok, get('バックアップ').ok], [true, false], 'テスト・バックアップ');
   assert(items.filter(i => !i.ok).every(i => i.how), '未完了の項目に「何をすればいいか」がない');
@@ -1164,6 +1165,76 @@ test('【P7】新規作成で「新しく作る」「既存アプリを取り込
   eq(it.map(i => i.key), ['機能｜店舗登録', '機能｜地図', '保存データ｜店舗'], '仕様の照合項目');
   eq(coverageSummary(it, { '機能｜地図': { status: 'todo' } }), { unjudged: 2, done: 0, partial: 0, todo: 1, diff: 0 }, '集計');
   db7.close(); await delDB(TEST_DB7);
+});
+
+
+// ---------------- Phase Sync-1：Googleログインだけ（データは送受信しない） ----------------
+// 本物のFirebaseの代わりに、同じ形の「にせFirebase」を差し込んで確認する（ネットに接続しない）
+function fakeFirebase() {
+  const ls = new Set(); let cur = null; const calls = [];
+  const set = u => { cur = u; ls.forEach(f => f(u)); };
+  return { calls, mod: {
+    app: { getApps: () => [], initializeApp: (c, n) => { calls.push(['init', n]); return { name: n, options: c }; } },
+    auth: {
+      getAuth: app => { calls.push(['getAuth', app.name]); return { get currentUser() { return cur; } }; },
+      onAuthStateChanged: (a, f) => { ls.add(f); setTimeout(() => f(cur), 0); return () => ls.delete(f); },
+      GoogleAuthProvider: class { setCustomParameters(p) { this.p = p; } },
+      signInWithPopup: async (a, prov) => { calls.push(['popup', prov.p?.prompt]); if (fakeFirebase.fail) { const e = new Error('x'); e.code = fakeFirebase.fail; throw e; } const u = { uid: 'uid-123', displayName: 'テスト先生', email: 'teacher@example.com', providerData: [{ providerId: 'google.com' }] }; set(u); return { user: u }; },
+      signOut: async () => { calls.push(['signOut']); set(null); },
+    } } };
+}
+const FAKE_CFG = { apiKey: 'AIza-test', authDomain: 'factory-test.firebaseapp.com', projectId: 'factory-test', appId: '1:1:web:1' };
+
+test('【Sync-1】Firebaseの設定チェック（未設定は「設定待ち」・個人情報は入れない）', async () => {
+  eq(SyncAuth.checkFirebaseConfig(null).ok, false, '未設定');
+  assert(SyncAuth.checkFirebaseConfig({ apiKey: 'a' }).reason.includes('authDomain'), '足りない項目の表示');
+  eq(SyncAuth.checkFirebaseConfig(FAKE_CFG).ok, true, '正しい設定');
+  eq(SyncAuth.checkFirebaseConfig({ ...FAKE_CFG, owner: 'me@gmail.com' }).ok, false, 'メールアドレス入りを拒否');
+  const shipped = await (await fetch('../config/firebase.json', { cache: 'no-cache' })).json();
+  assert(!/@/.test(JSON.stringify(shipped.config || {})), '配布する設定ファイルにメールアドレスが入っている');
+  eq(SyncAuth.SDK_URLS.auth, 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js', 'Firebase公式配布元・バージョン固定');
+  SyncAuth._setLoader(async () => { throw new Error('読み込ませない'); });
+  eq((await SyncAuth.initAuth({ config: null })).status, 'unconfigured', '設定がなければ Firebase を読み込まず「設定待ち」');
+  SyncAuth._setLoader(null);
+});
+
+test('【Sync-1】ログイン・ログアウトの流れとエラー表示（日本語・次にすること付き）', async () => {
+  const f = fakeFirebase();
+  SyncAuth._setLoader(async () => f.mod);
+  const seen = [];
+  const off = SyncAuth.onAuth(s => seen.push(s.status));
+  eq((await SyncAuth.initAuth({ config: FAKE_CFG })).status, 'signedOut', '最初は未ログイン');
+  const r = await SyncAuth.signIn();
+  eq([r.status, r.user.uid, r.user.name, f.calls.some(c => c[0] === 'popup' && c[1] === 'select_account')], ['signedIn', 'uid-123', 'テスト先生', true], 'ポップアップでログイン');
+  eq((await SyncAuth.signOut()).status, 'signedOut', 'ログアウト');
+  fakeFirebase.fail = 'auth/popup-blocked';
+  const r2 = await SyncAuth.signIn();
+  fakeFirebase.fail = null;
+  eq([r2.status, r2.error.title], ['signedOut', 'ログイン画面がブロックされました'], 'ポップアップが止められたとき');
+  for (const code of ['auth/popup-closed-by-user', 'auth/unauthorized-domain', 'auth/network-request-failed', 'auth/operation-not-supported-in-this-environment', 'sdk-load-failed', 'auth/what']) {
+    const m = SyncAuth.authErrorMessage({ code });
+    assert(m.title && m.how && !/[a-z]{6,}/i.test(m.title.replace(/Firebase|Google/g, '')), `「${code}」の日本語表示`);
+  }
+  off();
+  assert(seen.includes('signedIn') && seen.includes('signedOut'), '状態の通知');
+  SyncAuth._setLoader(null);
+});
+
+test('【Sync-1】ログイン機能はFactoryのデータに一切触れない（db.js・Firestoreを使わない）', async () => {
+  const src = await (await fetch('../js/sync/auth.js', { cache: 'no-cache' })).text();
+  const view = await (await fetch('../js/views/account.js', { cache: 'no-cache' })).text();
+  for (const [name, code] of [['auth.js', src], ['account.js', view]]) {
+    assert(!/from ['"][^'"]*db\.js['"]/.test(code), `${name} が db.js を読み込んでいる`);
+    assert(!/firebase-firestore|getFirestore|indexedDB\.open|FactoryDB/.test(code), `${name} がデータベースを使っている`);
+  }
+  const app = await (await fetch('../js/app.js', { cache: 'no-cache' })).text();
+  assert(!/initAuth\(/.test(app.split('async function boot')[1].split('// 画面部品へ渡す共通情報')[0]), '起動時にFirebaseを読み込んでいる');
+  // にせFirebaseでログイン→ログアウトしても、テスト用DBの中身は1件も変わらない
+  const before = JSON.stringify((await db.exportAll()).data);
+  const f = fakeFirebase(); SyncAuth._setLoader(async () => f.mod);
+  await SyncAuth.initAuth({ config: FAKE_CFG }); await SyncAuth.signIn(); await SyncAuth.signOut();
+  SyncAuth._setLoader(null);
+  eq(JSON.stringify((await db.exportAll()).data), before, 'ログイン操作でFactoryのデータが変わった');
 });
 
 // ---------------- 実行 ----------------

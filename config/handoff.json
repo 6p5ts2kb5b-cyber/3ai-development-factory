@@ -1,8 +1,8 @@
 {
-  "appVersion": "0.7.0",
-  "phase": "Phase 7",
-  "phaseStatus": "完了（実機確認待ち）",
-  "updatedAt": "2026-10-04 23:45",
+  "appVersion": "0.8.0",
+  "phase": "Sync-1",
+  "phaseStatus": "実装済み・Firebase設定済み（実機確認待ち）",
+  "updatedAt": "2026-10-05 11:45",
   "updatedBy": "Claude",
   "phaseLog": [
     "Phase 1 基盤構築：完了（実機確認待ち）— 2026-10-04。実機iPhone・PC・学校PCでの確認はまだ（ユーザーが後で実施予定）",
@@ -11,7 +11,9 @@
     "Phase 4 仕様書Version管理・要望箱→仕様反映・変更履歴：完了（実機確認待ち）— 2026-10-04。実機確認はまだ",
     "Phase 5 3AI比較・コード/ファイル管理・URL要約：完了（実機確認待ち）— 2026-10-04。実機確認はまだ",
     "Phase 6 テスト管理・完成度・引継ぎ：完了（実機確認待ち）— 2026-10-04。実機確認はまだ（「v1完成まで」画面の実機確認で記録できるようになった）",
-    "Phase 7 7プロジェクトの正式初期登録＋既存アプリ取込：完了（実機確認待ち）— 2026-10-04。実機確認はまだ。7件の既存アプリ有無は「未確認」（Factory完成後にユーザーが既存アプリを探して伝える）"
+    "Phase 7 7プロジェクトの正式初期登録＋既存アプリ取込：完了（実機確認待ち）— 2026-10-04。実機確認はまだ。7件の既存アプリ有無は「未確認」（Factory完成後にユーザーが既存アプリを探して伝える）",
+    "方針変更（2026-10-05 ユーザー承認）：複数端末同期をFactory完成条件に追加。Firebase Authentication＋Cloud Firestore・Sparkプラン。段階 Sync-1〜5。v0.7.0 の zip は保管",
+    "Sync-1 Googleログインだけ：実装済み・Firebase設定済み（プロジェクト factory-5b335）・実機確認待ち — 2026-10-05。Factoryのデータは送受信しない。実機確認は学校Surface → iPhoneホーム画面版の順"
   ],
   "implemented": [
     "【P1】PWA土台・IndexedDB・共通項目自動付与・変更履歴・ゴミ箱/復元・入力チェック・完成ガード・設定値(master.json)・JSONバックアップ/復元・引継ぎ・同期差し替え口・自動テスト（すべて維持）",
@@ -56,12 +58,17 @@
     "【P7】ホームは上から Factory本体 → Vintage Hunt → STORM → 教材 → 出欠・面談 → 会計 → 家族 → 健康（開発順）。野球成績・オーダーアプリは登録しない",
     "【P7】既存アプリ取込：新規作成で「新しく作る／既存アプリを取り込む」を選択。既存アプリタブで、アプリ名・Web URL・GitHub URL・Version・公開状態・実装済み・未実装・既知の問題・データ保存方式・外部サービス・テスト状況・次に改良すること を登録（コード/ファイルはファイルタブ）",
     "【P7】既存アプリの流れ：取込待ち → 現在の状態を登録 → 取込を完了（基準Versionとして記録。URLかコードと、Versionが必要）→ 確定仕様の各項目を「実装済み／一部実装済み／未実装／仕様と実装が違う」で照合 → 差分だけ選んで【改良候補】として要望箱へ（未検討）→ 通常の仕様反映ルートで次Version。照合しても仕様書・コードは変更しない",
-    "【P7】Factory本体の確定仕様 v1.0 に既存アプリ取込のルールを明記。カードと見出しに「既存アプリ未確認／取込待ち／取込済み」を表示。移行用指示書に既存アプリの情報を反映"
+    "【P7】Factory本体の確定仕様 v1.0 に既存アプリ取込のルールを明記。カードと見出しに「既存アプリ未確認／取込待ち／取込済み」を表示。移行用指示書に既存アプリの情報を反映",
+    "【Sync-1】Googleログイン画面（設定 →「Googleログインを開く」）：ログイン・ログアウト・名前/アカウント/ユーザーID/端末の種類の表示・日本語のエラー表示（理由＋対処）・オフライン表示",
+    "【Sync-1】Firebase SDK 12.19.0 を公式配布元（gstatic）から、ログイン画面を開いたときだけ読み込む。起動時は読み込まない。ログイン機能は db.js を読み込まず、Factoryのデータに一切触れない（自動テストで確認）",
+    "【Sync-1】config/firebase.json（接続情報。メールアドレス入りは拒否）。未設定の間は「Firebaseの設定待ち」と表示",
+    "【Sync-1】config/firebase.json に Factory用Firebase（factory-5b335）の接続情報を設定。承認済みドメイン 6p5ts2kb5b-cyber.github.io はユーザーが設定済み",
+    "【Sync-1】sw.js：更新時にブラウザに残った古いファイルを使わない（インストール時は cache:reload、通常時は毎回サーバーに更新確認）。GitHub Pagesの最大10分のファイル保持で新旧ファイルが混ざるのを防ぐ。VERSION-0.8.0.txt を追加（GitHubの一覧で版を確認できる）"
   ],
   "notImplemented": [
+    "Sync-2〜5：初回登録（Surface → クラウド）・双方向同期・オフライン/競合/同期状態表示・通しテスト（Sync-1の実機確認が両方合格してから）",
     "各アプリ本体（Vintage Hunt ほか7件）の実装：Factory v1完成判定の後、開発順に開始",
     "7件の既存アプリの取込：Factory完成後にユーザーが既存アプリ（Claudeで作ったアプリ）を探して伝える → 渡されたURL・コードだけ取り込む",
-    "自動同期（iPhone⇄PC）：方式選定→ユーザー確認（選定理由・無料枠・移行可能性）→実装。削除の同期（削除記録）は同期導入時に設計",
     "設定値（master）を画面から編集する機能",
     "仕様書本文の見やすい表示（Markdownの見出し・箇条書きの整形表示）は未対応（現在は文字のまま表示）",
     "日本語のファイル名での保存（v1完成後の改善候補）"
@@ -76,60 +83,41 @@
     "個人情報チェックは自動判定のため完全ではない（最後は目で確認・正式採用）",
     "URLのタイトル取得は多くのサイトで「取得できません」になる（回避処理はしない・正式採用）",
     "差分は行単位",
-    "アプリ更新時は sw.js の CACHE 版数を上げる（現在 factory-v7）",
+    "アプリ更新時は sw.js の CACHE 版数を上げる（現在 factory-v8）",
     "7件の既存アプリの有無は未確認（推測で登録しない）。ユーザーの申告では、Claudeで作った既存アプリ（部活運営・STORMクラブ運営・都道府県と野球・ストップウォッチタイマー・小学生向け計算 など）があり、Factory完成後に確認して伝える予定。野球成績アプリは対象外",
     "claude.ai上で公開済みの成果物一覧には、STORMクラブの設計書（文書）2件・けいさんラッシュ・都道府県ベースボール・セッションタイマー 等があったが、どのアプリに当たるかは未確認のため登録していない",
-    "仕様との照合は「## 見出し」の下の箇条書き単位（絶対条件・技術上の注意・AIの役割・未実装は照合対象外）"
+    "仕様との照合は「## 見出し」の下の箇条書き単位（絶対条件・技術上の注意・AIの役割・未実装は照合対象外）",
+    "Sync-1：iPhoneホーム画面版でポップアップ方式のログインが動くかは実機確認が必要（動かない場合は、ログイン補助ファイルをGitHub Pages側に置く方式へ切り替える）",
+    "Sync-1：ログインには www.gstatic.com（Firebase公式配布元）への接続が必要。学校ネットワークで止められていないか確認が必要",
+    "開発環境の都合で、本物のFirebaseでの自動テストはできない（同じ形の「にせFirebase」で画面と安全性を確認。本物は実機確認で確認）",
+    "更新直後の1〜2回の表示は、前の版のオフライン用の仕組み（Service Worker）が出すことがある。2〜3回再読み込みすると新しい版になる（設定画面の「Factory v0.8.0」で確認）"
   ],
   "lastChangedFiles": [
-    "新規：config/initial-projects.json（Factory本体＋7件の確定仕様・作業・テスト・確認事項）, js/seed.js（初期登録）, js/views/importer.js（既存アプリタブ）, tests/e2e/phase7.e2e.js",
-    "変更：js/db.js（setOrigin・saveExisting・completeImport・setCoverage・coverageToRequests）, js/logic.js（specItems・coverageSummary）, js/schema.js, config/master.json（v7：projectOrigins・importStatuses・coverageStatuses・publishStates）",
-    "変更：js/views/projectForm.js（新しく作る／既存アプリを取り込む）, js/views/project.js（既存アプリタブ・表示）, js/views/home.js, js/views/v1.js（登録ボタン・既存アプリ有無の確認）, js/guide.js（既存アプリ情報）, js/labels.js",
-    "変更：css/style.css, sw.js（factory-v7）, js/app.js（0.7.0）, config/handoff.json, tests/tests.js（61項目）, docs"
+    "新規：js/sync/auth.js, js/views/account.js, config/firebase.json, docs/同期設計.md, tests/e2e/sync1.e2e.js",
+    "変更：js/app.js（#/account・設定画面のカード・0.8.0）, sw.js（factory-v8）, css/style.css, tests/tests.js（64項目）, config/handoff.json, docs",
+    "変更：sw.js（古いファイルを使わない取得方法・VERSION-0.8.0.txt）。新規：VERSION-0.8.0.txt"
   ],
   "nextSteps": [
-    "ユーザー：GitHub Pagesのファイルを今回の版に上書きし、iPhone・自宅PC・学校PCで tests/ が「全61項目 合格」になるか確認し、「v1完成まで」画面の実機確認・公開確認に記録",
-    "ユーザー：ホームの「Factory本体＋7プロジェクトを登録」を押し、8件が並ぶことを確認",
-    "Factory v1完成判定（実機確認・公開確認・バックアップ）",
-    "Factory完成後：ユーザーが既存アプリを探して伝える → 該当プロジェクトの「既存アプリ」タブで取込（推測しない・作り直さない）",
-    "その後、開発順の1番目 Vintage Hunt v1 の実装を開始（既存アプリの有無を確認してから）"
+    "ユーザー：学校Surface（Edge）で本物のGoogleログイン／ログアウトを実機確認（8プロジェクトが変わらないことも確認）→ iPhoneホーム画面版で実機確認（両方合格が条件）",
+    "Sync-2の前：Firebase Consoleで Firestore を作成し、owners にユーザーIDを登録（Claudeが案内）",
+    "Sync-2：学校Surfaceからクラウドへの初回登録（事前に自動バックアップ・空の端末からは送らない）"
   ],
   "testResults": {
-    "runAt": "2026-10-04 23:55",
-    "total": 664,
-    "passed": 664,
+    "runAt": "2026-10-05 11:45",
+    "total": 733,
+    "passed": 733,
     "failed": 0,
     "details": [
       {
-        "name": "ブラウザ内自動テスト 61項目（P1:18＋P2:9＋P3:7＋P4:6＋P5:5＋P6:7＋P7:9）",
+        "name": "ブラウザ内自動テスト 64項目（P1〜P7:61＋Sync-1:3）",
         "ok": true
       },
       {
-        "name": "Phase 1 回帰の画面操作テスト 34/34",
+        "name": "Phase 1〜7 画面操作テスト 603/603（回帰）",
         "ok": true
       },
       {
-        "name": "Phase 2 画面操作テスト 90/90（iPhone 13・iPhone SE・PC）",
-        "ok": true
-      },
-      {
-        "name": "Phase 3 画面操作テスト 93/93",
-        "ok": true
-      },
-      {
-        "name": "Phase 4 画面操作テスト 93/93",
-        "ok": true
-      },
-      {
-        "name": "Phase 5 画面操作テスト 104/104",
-        "ok": true
-      },
-      {
-        "name": "Phase 6 画面操作テスト 81/81",
-        "ok": true
-      },
-      {
-        "name": "Phase 7 画面操作テスト 108/108（iPhone 13・iPhone SE・PC 各36項目）",
+        "name": "Sync-1 画面操作テスト 66/66（iPhone 13・iPhone SE・PC 各22項目・にせFirebase）",
         "ok": true
       }
     ]
@@ -178,7 +166,7 @@
       "tests": "ブラウザ内9項目＋画面操作108項目 合格"
     }
   ],
-  "nextPhase": "Phase 7まで完了。次は実機確認とFactory v1完成判定。その後、既存アプリの取込（ユーザーが伝えたものだけ）→ Vintage Hunt v1 の実装開始",
+  "nextPhase": "Sync-1の実機確認（学校Surface → iPhoneホーム画面版）→ 両方合格後に Sync-2（初回登録）",
   "rules": [
     "指示書 v1.0 の絶対条件15項目を守る（確定仕様を勝手に削除しない・無料運用優先・有料サービスは事前に明示・外部停止でも使える・個人情報を自動送信しない・動かない機能を完成と表示しない・既存コードを理由なく全面書き換えしない 等）",
     "3AIはAPIを使わず、依頼文コピー＆回答貼り付け。Factoryは採用案もAIも勝手に決めない（おすすめは表示のみ）",
@@ -193,6 +181,39 @@
     "各Phase終了時に「実装済み・未実装・テスト結果・エラー/既知の問題・次に行うこと」を報告し、全テスト合格まで完了にしない",
     "既存アプリはゼロから作り直さない。現在の状態を取り込み → 基準Versionとして保存 → 確定仕様と照合 → 必要な改良だけ要望箱へ → 次Versionとして改良",
     "既存アプリのURLやソースコードが渡されていない場合、推測して登録しない。仕様と違っていても、勝手に既存アプリのコードを変更しない",
-    "7プロジェクトの開発順：Vintage Hunt → STORM → 教材 → 出欠・面談 → 会計 → 家族 → 健康。野球成績・オーダーアプリはFactory対象外（追加・統合しない）"
-  ]
+    "7プロジェクトの開発順：Vintage Hunt → STORM → 教材 → 出欠・面談 → 会計 → 家族 → 健康。野球成績・オーダーアプリはFactory対象外（追加・統合しない）",
+    "同期の段階は Sync-1〜5。各段階の実機確認が合格してから次へ進む。Sync-1ではFactoryのデータを送受信しない",
+    "学校Surfaceの既存データ（Factory＋7件）を絶対に変更・削除しない。空の端末のデータでクラウドや他端末を上書きしない",
+    "Security Rules・コード・GitHubにメールアドレスを書かない（「自分だけ」はFirebase Consoleの owners でユーザーIDを登録する方式）",
+    "無料枠のリセット時刻・上限超過時の再開時期は断定しない（Firebase公式の記載どおりに表現する）"
+  ],
+  "sync": {
+    "stages": [
+      {
+        "key": "Sync-1",
+        "name": "Googleログイン",
+        "status": "実装済み・Firebase設定済み（実機確認待ち）"
+      },
+      {
+        "key": "Sync-2",
+        "name": "学校Surfaceからクラウドへの初回登録",
+        "status": "未着手"
+      },
+      {
+        "key": "Sync-3",
+        "name": "双方向の同期",
+        "status": "未着手"
+      },
+      {
+        "key": "Sync-4",
+        "name": "オフライン・競合・同期状態の表示",
+        "status": "未着手"
+      },
+      {
+        "key": "Sync-5",
+        "name": "通しテスト（Surface → iPhone → オフライン → バックアップ）",
+        "status": "未着手"
+      }
+    ]
+  }
 }
