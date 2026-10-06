@@ -1,0 +1,5 @@
+3AI Development Factory v0.8.9
+- Sync-2-4 iPhone import backup hardened
+- Step 1 now saves an independent import-specific fallback copy before opening the JSON file preview
+- runImport can recover the pre-import snapshot from that fallback if IndexedDB copy is unavailable
+- Service Worker factory-v17
