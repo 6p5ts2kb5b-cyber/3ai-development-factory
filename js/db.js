@@ -796,7 +796,20 @@ export class FactoryDB {
   }
 
   // 復元：現在のデータを全て置き換え。1つでも失敗したら全体を取り消し（元データのまま）
-  async importAll(json, { actor } = {}) {
+  // Sync-3：クラウドから受け取った記録を、そのままの形（rev・更新日時・更新者・端末IDを変えずに）書き込む。
+  // 1回の処理で全部成功するか、何も変わらないか。変更履歴は作らない（記録の変更履歴は送った端末のものが一緒に届くため）。
+  async applySyncedRecords(items) {
+    if (!items.length) return 0;
+    const stores = [...new Set(items.map(x => x.store))];
+    for (const s of stores) if (!STORES[s]) throw new FactoryError(`保存先「${s}」は存在しません`);
+    for (const x of items) if (!x.rec || typeof x.rec.id !== 'string' || !x.rec.id) throw new FactoryError('IDのない記録は書き込めません');
+    const tx = this._tx(stores, 'readwrite');
+    for (const x of items) tx.objectStore(x.store).put(x.rec);
+    await done(tx);
+    return items.length;
+  }
+
+  async importAll(json, { actor, reason } = {}) {
     const counts = FactoryDB.checkBackup(json);
     const stores = Object.keys(STORES);
     const tx = this._tx(stores, 'readwrite');
@@ -804,7 +817,7 @@ export class FactoryDB {
       tx.objectStore(s).clear();
       for (const r of json.data[s] || []) tx.objectStore(s).put(r);
     }
-    this._history(tx, { action: 'import', store: '*', recordId: '*', actor: actor || this.actor, reason: `バックアップ（${json.exportedAt || '日時不明'}）から復元`, changes: {} });
+    this._history(tx, { action: 'import', store: '*', recordId: '*', actor: actor || this.actor, reason: reason || `バックアップ（${json.exportedAt || '日時不明'}）から復元`, changes: {} });
     await done(tx);
     return counts;
   }

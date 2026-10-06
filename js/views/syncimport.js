@@ -6,8 +6,8 @@ import { checkCloudStatus } from '../sync/cloud.js';
 import { loadInitialProjects } from '../seed.js';
 import { analyzeForSync, fingerprint, STORE_LABELS_JA } from '../sync/dryrun.js';
 import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot, saveImportSnapshotFallback, getImportSnapshotFallback } from '../sync/pull.js';
-import { getSnapshot } from '../sync/register.js';
 import { loadMaster } from '../master.js';
+import { getSnapshot } from '../sync/register.js';
 
 const mb = n => `${(n / 1024 / 1024).toFixed(2)}MB`;
 const WIZARD_KEY = 'factory-sync-import-wizard-v1';
@@ -48,7 +48,6 @@ export async function syncImportView(ctx, view) {
         <p class="muted">この端末：<strong>${esc(device)}</strong></p>
         ${c ? `<ul class="cond">${c.map(x => `<li class="${x.ok ? 'ok' : 'ng'}"><span class="mark">${x.ok ? '✅' : '⬜'}</span><div><strong>${esc(x.label)}</strong><div class="muted">${esc(x.detail)}</div></div></li>`).join('')}</ul>` : '<p>まず、クラウドの状態と取り込む内容を確認します（クラウドは読むだけです）。</p>'}
         <button class="btn${c ? '' : ' primary'}" id="im-check"${st.busy ? ' disabled' : ''}>${c ? 'もう一度確認する' : 'クラウドの内容を確認する'}</button>
-        ${checksOk && st.cloud?.ok && !st.same ? '<button class="btn primary" id="im-next-backup">次へ：バックアップ</button>' : ''}
       </section>
       ${C ? `<section class="card" id="im-cloud">
         <h2>2. クラウドから取り込む内容</h2>
@@ -111,22 +110,14 @@ export async function syncImportView(ctx, view) {
         st.cloudA = analyzeForSync({ data }, { expectedProjects: expected });
       } catch (e) { st.error = importErrorMessage(e); }
     }
-    const exp = await ctx.db.exportAll();
+    const exp = await ctx.db.exportAll(); // 読むだけ
     st.exp = exp;
     st.local = localSummary(exp, expected);
     const localFp = await fingerprint(st.local.analysis.targetsForFingerprint);
     st.same = !!(st.cloud && st.cloud.fingerprint && localFp === st.cloud.fingerprint);
     st.checks = checks;
-    if (!st.snapshot && st.snapshotId) {
-      try {
-        let snap = await getSnapshot(st.snapshotId);
-        if (!snap) snap = getImportSnapshotFallback(st.snapshotId);
-        if (snap && snap.fingerprint === localFp) st.snapshot = snap;
-        else { st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false; }
-      } catch {}
-    }
-    if (st.snapshot && st.snapshot.fingerprint !== localFp) { st.snapshot = null; st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false; }
-    saveWizard({ snapshotId: st.snapshot?.id || st.snapshotId || null, fileSaved: st.fileSaved, fileName: st.fileName || '', fileConfirmed: st.fileConfirmed });
+    // バックアップの後にこの端末のデータが変わったら、バックアップは作り直し
+    if (st.snapshot && st.snapshot.fingerprint !== localFp) { st.snapshot = null; st.fileSaved = false; st.fileConfirmed = false; }
     st.busy = false; render();
   };
 
@@ -136,7 +127,6 @@ export async function syncImportView(ctx, view) {
       st.snapshot = await saveSnapshot(st.exp, { deviceKind: device });
       if (!st.snapshot?.ok) throw new Error('端末内の控えを読み直して確認できませんでした');
       st.snapshotId = st.snapshot.id;
-      // iPhoneのファイル表示でIndexedDB側が失われても戻せるよう、取り込み専用の控えを別保存する。
       saveImportSnapshotFallback({ ...st.snapshot, json: JSON.stringify(st.exp) });
       st.fileSaved = false; st.fileConfirmed = false;
       st.fileName = preimportFileName();
@@ -153,7 +143,6 @@ export async function syncImportView(ctx, view) {
   const saveBackupFile = () => {
     if (!st.snapshot?.ok || !st.exp) return;
     st.fileName = st.fileName || preimportFileName();
-    // iPhoneではファイル表示へ移る前に状態を保存する。戻ってきても①の控えを失わない。
     st.fileSaved = true; st.fileConfirmed = false;
     saveWizard({ snapshotId: st.snapshot.id, fileSaved: true, fileName: st.fileName, fileConfirmed: false });
     downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
@@ -182,7 +171,6 @@ export async function syncImportView(ctx, view) {
   const bind = () => {
     const q = s => body.querySelector(s);
     q('#im-check') && (q('#im-check').onclick = runChecks);
-    q('#im-next-backup') && (q('#im-next-backup').onclick = () => body.querySelector('#im-backup')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     q('#im-backup-btn') && (q('#im-backup-btn').onclick = makeBackup);
     q('#im-save-file') && (q('#im-save-file').onclick = saveBackupFile);
     q('#im-file-ok') && (q('#im-file-ok').onchange = e => { st.fileConfirmed = e.target.checked; saveWizard({ snapshotId: st.snapshot?.id || st.snapshotId || null, fileSaved: st.fileSaved, fileName: st.fileName || '', fileConfirmed: st.fileConfirmed }); render(); });
@@ -190,7 +178,6 @@ export async function syncImportView(ctx, view) {
     q('#im-go') && (q('#im-go').onclick = doImport);
   };
   render();
-  if (saved.snapshotId || saved.fileSaved) setTimeout(() => runChecks(), 0);
 }
 
 function doneHtml(d, device) {

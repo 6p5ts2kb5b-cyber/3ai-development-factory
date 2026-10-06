@@ -1,5 +1,10 @@
-3AI Development Factory v0.9.0
-- Sync-2-4 iPhone file-preview state persistence fix
-- Wizard state moved from sessionStorage to localStorage
-- Import screen restores the internal snapshot from the dedicated fallback copy when IndexedDB/session state is lost
-- Service Worker factory-v18
+3AI Development Factory v0.9.0（Sync-3：PC・iPhoneの双方向同期・ボタンを押したときだけ）
+- 設定画面の表示：Factory v0.9.0
+- sw.js：const CACHE = 'factory-v14';
+- Googleログイン・同期の画面に「PC・iPhoneの同期」：同期を始める／クラウドの最新を確認／変更をクラウドへ送る／最新をこの端末へ反映／競合を確認
+- 記録ごとの差分（この端末・前回そろえた状態・クラウドの3つを内容の指紋で比べる）。送る前・受け取る前に件数と内容を表示
+- 削除はクラウドへ反映しない。端末ごとの記録・この端末だけの記録・ゴミ箱は同期しない
+- iPhoneでの使いやすさ：画面切替の安定化・入力欄16px（拡大防止）・保存ボタンを下に固定
+このファイルがGitHubの一覧に表示されていれば、v0.9.0のファイルがアップロードされています。
+
+ChatGPT merge: retained iPhone Sync-2-4 backup/state fixes; service worker factory-v19.

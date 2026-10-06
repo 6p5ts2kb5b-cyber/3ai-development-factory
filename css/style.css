@@ -106,7 +106,7 @@ main { max-width: 960px; margin: 0 auto; padding: 16px; }
 /* 入力 */
 label.field { display: block; margin-bottom: 12px; }
 label.field span { display: block; font-weight: 700; font-size: .9rem; margin-bottom: 4px; }
-input[type=text], input[type=url], input[type=search], select, textarea {
+input[type=text], input[type=url], input[type=search], input[type=date], input[type=number], input[type=email], input[type=password], input:not([type]), select, textarea {
   width: 100%; font: inherit; font-size: 16px; /* iPhoneの自動ズーム防止 */
   padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
 }
@@ -317,7 +317,7 @@ em.req { font-style: normal; font-size: .72rem; color: var(--ng); border: 1px so
 .spec-body { background: var(--surface-2); border-radius: 10px; padding: 12px; font-size: .92rem; max-height: 60vh; overflow: auto; }
 .versions li.current { background: var(--surface-2); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
 .versions a { text-decoration: none; color: inherit; display: flex; flex-direction: column; }
-textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Yu Gothic", monospace; font-size: 15px; line-height: 1.5; }
+textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Yu Gothic", monospace; font-size: 16px; line-height: 1.5; } /* 16px未満だとiPhoneで入力時に画面が拡大される */
 
 /* 差分 */
 .sum-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
@@ -443,11 +443,52 @@ pre.code { max-height: 50vh; }
 
 /* ---- Sync-1：Googleログイン ---- */
 code.uid { font-size: .8rem; word-break: break-all; background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
-
-/* ---- Sync-2-1：クラウド状態表示 ---- */
 #cloud-result .badge { white-space: normal; }
 
 /* ---- Sync-2-3：初回正本登録 ---- */
 .rg-progress { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .rg-progress[hidden] { display: none; }
 .rg-progress .card { max-width: 420px; width: 100%; }
+
+/* ---- Sync-3：PC・iPhoneの同期 ---- */
+.section-title { margin: 28px 0 4px; font-size: 1.05rem; }
+.s3-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+@media (min-width: 640px) { .s3-actions { grid-template-columns: 1fr 1fr; } }
+.s3-actions .btn { width: 100%; min-height: 48px; }
+.s3-sub { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.s3-list li { padding: 10px 0; }
+.s3-list .check { align-items: flex-start; }
+.s3-list .check input { margin-top: 4px; }
+.ng-text { color: var(--ng); }
+.ok-notice { border-left-color: var(--ok); }
+.s3-conf { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 12px 0; background: var(--surface); }
+.s3-conf h4 { margin: 0 0 8px; }
+.s3-versions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.s3-ver { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.s3-ver h5 { margin: 0 0 4px; font-size: .9rem; }
+.s3-ver p { margin: 0; font-size: .85rem; }
+.s3-diff { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; font-size: .9rem; }
+.s3-diff th, .s3-diff td { border-top: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
+.s3-diff thead th { font-size: .8rem; color: var(--ink-2); }
+.s3-diff tbody th { width: 22%; font-weight: 700; }
+.s3-diff .check { align-items: flex-start; gap: 6px; }
+.s3-diff .check input { margin-top: 3px; flex: none; }
+/* 長い一覧でも「送る」「反映する」ボタンが見つけやすいよう、画面の下に固定 */
+.sticky-actions { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0; z-index: 5; box-shadow: 0 -8px 12px -8px rgba(0,0,0,.12); }
+@media (min-width: 960px) { .sticky-actions { bottom: 0; } }
+/* iPhone：入力中もモーダルの保存ボタンが見えるよう、ボタン列を下に固定 */
+.modal form > .btns:last-of-type, .modal > .btns:last-child { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin-bottom: calc(-20px - env(safe-area-inset-bottom)); z-index: 2; }
+.btn { min-height: 44px; }
+
+/* 競合：項目ごとの選択カード（小さい画面では縦に並べる） */
+.s3-fields { margin: 10px 0; }
+.s3-field { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+.s3-field legend { font-weight: 700; font-size: .95rem; margin-bottom: 6px; padding: 0; }
+.s3-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .s3-opts { grid-template-columns: 1fr; } }
+.s3-opt { display: block; border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 48px; cursor: pointer; background: var(--surface); }
+.s3-opt:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+.s3-opt input { width: 20px; height: 20px; vertical-align: -4px; margin: 0 6px 0 0; accent-color: var(--accent); }
+.s3-opt-h { font-weight: 700; font-size: .9rem; }
+.s3-opt-v { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+@media (max-width: 420px) { .s3-versions { grid-template-columns: 1fr; } }

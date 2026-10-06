@@ -21,7 +21,7 @@ import { safeCopy } from './views/safecopy.js';
 import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
-import { syncImportView } from './views/syncimport.js?v=090';
+import { syncImportView } from './views/syncimport.js?v=0901';
 export const APP_VERSION = '0.9.0';
 const view = document.getElementById('view');
 
@@ -69,10 +69,10 @@ const routes = {
   '/': () => homeView(ctx, view, params()), '/system': home, '/backup': backup, '/trash': trash, '/handoff': handoffView, '/settings': settings,
   '/talk': () => talkView(ctx, view), '/requests': () => requestsView(ctx, view, params()),
   '/v1': () => v1View(ctx, view, { loadHandoff }),
-  '/account': () => accountView(view), // Sync-1：Googleログインだけ（データは送受信しない）
+  '/account': () => accountView(view, ctx), // Sync-1：Googleログインだけ（データは送受信しない）
   '/sync-check': () => syncCheckView(ctx, view), // Sync-2-2：登録の予行演習（確認だけ・送信しない）
   '/sync-register': () => syncRegisterView(ctx, view, { appVersion: APP_VERSION }), // Sync-2-3：初回正本登録
-  '/sync-import': () => syncImportView(ctx, view), // Sync-2-4：クラウド → この端末
+  '/sync-import': () => syncImportView(ctx, view), // Sync-2-4：この端末への取り込み（クラウド → 端末の一方向）
 };
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
 // メニューのどこを選択中にするか
@@ -90,9 +90,13 @@ async function route({ keepScroll = false } = {}) {
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   const y = window.scrollY;
-  try { await fn(); } catch (e) { view.innerHTML = errorHtml(e); }
+  const my = ++routeSeq;
+  try { await fn(); } catch (e) { if (my === routeSeq) view.innerHTML = errorHtml(e); }
+  // 画面を続けて切り替えたとき、前の画面の表示が後から上書きしてしまった場合は、今の画面を表示し直す（iPhoneホーム画面版での安定化）
+  if (my !== routeSeq) { if (!rerouting) { rerouting = true; queueMicrotask(() => { rerouting = false; route({ keepScroll: true }); }); } return; }
   window.scrollTo(0, keepScroll ? y : 0);
 }
+let routeSeq = 0, rerouting = false;
 function notFound() { view.innerHTML = `<div class="card"><h1>ページが見つかりません</h1><a class="btn" href="#/">ホームへ戻る</a></div>`; }
 
 async function storageInfo() {
@@ -204,6 +208,7 @@ async function backup() {
 }
 
 // ---------- ゴミ箱 ----------
+// Phase 3：プロジェクトは関連データとまとめて1件で表示。完全削除は明確な確認つき
 async function trash() {
   const items = await db.listTrash();
   const title = r => r.record?.name || r.record?.title || r.record?.topic || r.record?.fileName || r.record?.item || r.record?.url || r.recordId;
@@ -251,6 +256,7 @@ async function handoffView() {
     ${handoff.rules?.length ? `<section class="card"><h2>重要な設計ルール</h2><ul>${handoff.rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}
     <section class="card"><h2>テスト結果（この端末での最新）</h2>${lastTest ? `<p>${fmtDate(lastTest.runAt)}：合格 ${lastTest.passed} / ${lastTest.total}</p>` : '<p class="muted">まだこの端末で実行していません。</p>'}</section>
     <details class="card"><summary>Markdown全文</summary><pre class="md">${esc(md)}</pre></details>`;
+  // Factory全体の引継ぎはFactoryが作る文章（利用者の個人データを含まない）ので、そのままコピー
   document.getElementById('copy-md').onclick = async () => toast(await copyText(md) ? 'コピーしました' : 'コピーできませんでした。下の全文を長押しして選択してください');
   document.getElementById('dl-md').onclick = () => {
     const a = document.createElement('a');

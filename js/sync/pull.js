@@ -22,6 +22,7 @@ export function clearImportSnapshotFallback(id) {
 }
 const uidOrThrow = () => { const u = currentUid(); if (!u) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' }); return u; };
 
+// クラウドの全件を読む（読むだけ）。登録済みのものだけ。内容の指紋で1件ずつ確かめる
 export async function readCloudData() {
   const uid = uidOrThrow();
   const { fs, db } = await firestoreHandle();
@@ -44,10 +45,11 @@ export async function readCloudData() {
     const docs = [];
     snap.forEach(d => docs.push([d.id, d.data()]));
     for (const [docId, x] of docs) {
-      if (x.uploadId !== uploadId) { ignored++; continue; }
-      const json = x.parts ? (chunkMap[`${store}~${docId}`] || []).join('') : x.json;
+      if (x.uploadId !== uploadId) { ignored++; continue; } // 前回の途中の記録などは使わない
+      // 分割された記録は、記録の部分数（parts）までをつなぐ（Sync-3で小さく書き換えた後の古い部分は使わない）
+      const json = x.parts ? (chunkMap[`${store}~${docId}`] || []).slice(0, x.parts).join('') : x.json;
       if (typeof json !== 'string' || (await sha256(json)) !== x.hash) { problems.push({ store, id: x.id, reason: '内容の指紋が一致しません' }); continue; }
-      try { list.push({ rec: JSON.parse(json), hash: x.hash }); } catch { problems.push({ store, id: x.id, reason: '読み取れません' }); }
+      try { list.push({ rec: JSON.parse(json), hash: x.hash, docId, cloudRev: x.cloudRev || 0, deviceLabel: x.deviceLabel || '', deviceId: x.deviceId || '', pushedAt: x.pushedAt || null }); } catch { problems.push({ store, id: x.id, reason: '読み取れません' }); }
     }
     records[store] = list;
   }
@@ -61,15 +63,18 @@ export async function readCloudData() {
   return { meta, uploadId, records, counts, total, fingerprint: fp, problems, ignored, ok: !problems.length };
 }
 
+// この端末の今のデータ（読むだけ）
 export function localSummary(exp, expectedProjects = []) {
   const a = analyzeForSync(exp, { expectedProjects });
   return { analysis: a, total: a.total, isEmpty: a.total === 0, projects: a.projects };
 }
 
+// 取り込み後のこの端末の全データ（クラウドの記録＋この端末に残すもの）を組み立てる
 export function buildImportJson(cloud, localExp) {
   const data = {};
   for (const s of Object.keys(localExp.data)) data[s] = [];
   for (const s of SYNC_TARGET_STORES) data[s] = (cloud.records[s] || []).map(x => x.rec);
+  // この端末に残すもの：端末ごとの設定（同期の対象外）と、この端末だけの記録（localOnly）
   const kept = [];
   for (const [s, rows] of Object.entries(localExp.data)) for (const r of rows || []) {
     if (isSyncTarget(s, r)) continue;
@@ -80,6 +85,7 @@ export function buildImportJson(cloud, localExp) {
   return { json: { app: localExp.app, schemaVersion: localExp.schemaVersion, exportedAt: new Date().toISOString(), exportedBy: 'クラウドから取り込み', deviceId: localExp.deviceId, counts, data }, kept };
 }
 
+// 取り込んだ後の照合：クラウドの全件が、この端末に同じ内容であるか（取り込みの記録1件と、残したものは除く）
 export async function verifyLocal(cloud, afterExp, { kept = [], importHistoryId = null } = {}) {
   const mismatches = [];
   const keptSet = new Set(kept.map(([s, id]) => `${s}/${id}`));
@@ -105,6 +111,7 @@ export async function verifyLocal(cloud, afterExp, { kept = [], importHistoryId 
   return { ok: !mismatches.length && checked === cloud.total, checked, mismatches, fingerprint: fp };
 }
 
+// 照合用の記録（Sync-3で使う）。Factoryとは別のデータベース
 async function saveImportState(rec) {
   const d = await new Promise((res, rej) => { const r = indexedDB.open(SYNC_DB, 1); r.onupgradeneeded = () => { const x = r.result; if (!x.objectStoreNames.contains('snapshots')) x.createObjectStore('snapshots', { keyPath: 'id' }); if (!x.objectStoreNames.contains('state')) x.createObjectStore('state', { keyPath: 'id' }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   try { await new Promise((res, rej) => { const q = d.transaction('state', 'readwrite').objectStore('state').put({ id: 'import', ...rec }); q.onsuccess = res; q.onerror = () => rej(q.error); }); } finally { d.close(); }
@@ -114,22 +121,31 @@ export async function getImportState() {
   try { return await new Promise((res, rej) => { const q = d.transaction('state').objectStore('state').get('import'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); } finally { d.close(); }
 }
 
+/**
+ * 取り込みの本体
+ * @param {FactoryDB} db この端末のデータベース
+ * @param {object} p { snapshotId（取り込み前の控え）, expectedFingerprint（確認画面で見たクラウドの指紋）, onProgress }
+ */
 export async function runImport(db, { snapshotId, expectedFingerprint, onProgress = () => {} }) {
   uidOrThrow();
   let snap = await getSnapshot(snapshotId);
   if (!snap) snap = getImportSnapshotFallback(snapshotId);
   if (!snap) throw Object.assign(new Error('取り込み前のバックアップ（端末内の控え）が見つかりません。バックアップからやり直してください'), { code: 'no-backup' });
+  // 1) 直前にもう一度クラウドを読み、確認画面と同じ内容か確かめる
   onProgress('read');
   const cloud = await readCloudData();
   if (!cloud.ok) throw Object.assign(new Error(`クラウドの内容に問題があります（${cloud.problems.length}件）。取り込みは行っていません`), { code: 'cloud-problem', problems: cloud.problems });
   if (expectedFingerprint && cloud.fingerprint !== expectedFingerprint) throw Object.assign(new Error('確認画面のあとにクラウドの内容が変わりました。「クラウドの内容を確認する」からやり直してください'), { code: 'cloud-changed' });
+  // 2) 控えを作った後にこの端末のデータが変わっていないか
   const before = await db.exportAll();
   const beforeSnapJson = JSON.parse(snap.json);
   if ((await fingerprint(analyzeForSync(before).targetsForFingerprint)) !== snap.fingerprint) throw Object.assign(new Error('バックアップの後にこの端末のデータが変わりました。バックアップからやり直してください'), { code: 'local-changed' });
+  // 3) 置き換え（全部成功するか、何も変わらないか）
   onProgress('write');
   const { json, kept } = buildImportJson(cloud, before);
   const startedAt = new Date().toISOString();
   await db.importAll(json, { reason: `クラウドから取り込み（登録元：${cloud.meta.sourceDevice || '不明'}・${cloud.total}件）` });
+  // 4) 照合。一致しなければ、取り込み前の控えへ戻す
   onProgress('verify');
   const after = await db.exportAll();
   const imp = (after.data.history || []).filter(h => h.action === 'import' && h.at >= startedAt).sort((a, b) => (a.at < b.at ? 1 : -1))[0];

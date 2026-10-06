@@ -10,27 +10,32 @@ import { currentUid } from './auth.js';
 import { firestoreHandle, META_PATH, describeMeta, cloudErrorMessage } from './cloud.js';
 import { isSyncTarget, analyzeForSync, fingerprint, SYNC_TARGET_STORES } from './dryrun.js';
 
-export const CHUNK_UNITS = 250000;
-export const CHUNK_OVER = 700000;
-export const BATCH_MAX_OPS = 200;
-export const BATCH_MAX_BYTES = 4000000;
-export const SYNC_DB = 'factory-sync';
+export const CHUNK_UNITS = 250000;     // 1つの部分の最大文字数（UTF-8で最大約750KB）
+export const CHUNK_OVER = 700000;      // これを超える記録（バイト数）は分割して送る
+export const BATCH_MAX_OPS = 200;      // 1回にまとめて送る件数の上限
+export const BATCH_MAX_BYTES = 4000000; // 1回にまとめて送る大きさの上限（約4MB）
+export const SYNC_DB = 'factory-sync'; // 端末内の控え・照合用の記録（Factoryのデータベースとは別）
 
 const enc = new TextEncoder();
 const bytesOf = s => enc.encode(s).length;
 
+// FirestoreのドキュメントIDに使えない文字や「__〜__」の形を避ける（元のIDは中身に保存）
 export function encodeId(id) {
   return 'r-' + String(id).replace(/[^A-Za-z0-9_-]/g, c => '~' + c.codePointAt(0).toString(16) + '~');
 }
+
 export async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
 export function splitChunks(json, size = CHUNK_UNITS) {
   const parts = [];
   for (let i = 0; i < json.length; i += size) parts.push(json.slice(i, i + size));
   return parts.length ? parts : [''];
 }
+
+// 送る内容の一覧を作る（バックアップの中身から。端末のデータには触れない）
 export async function buildPlan(exp, { expectedProjects = [] } = {}) {
   const items = [];
   for (const store of Object.keys(exp?.data || {})) {
@@ -48,6 +53,8 @@ export async function buildPlan(exp, { expectedProjects = [] } = {}) {
   const a = analyzeForSync(exp, { expectedProjects });
   return { items, counts, total: items.length, projectNames: a.projects.names, fingerprint: await fingerprint(a.targetsForFingerprint), chunked: items.filter(i => i.parts).length };
 }
+
+// ---- 端末内の控え（Factoryとは別のデータベース） ----
 function openSyncDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(SYNC_DB, 1);
@@ -75,6 +82,8 @@ export async function getSnapshot(id) {
 }
 export const getSyncState = () => syncGet('state', 'register');
 const setSyncState = rec => syncPut('state', { id: 'register', ...rec });
+
+// 登録直前のバックアップ（端末内の控え）を保存し、読み直して中身が同じか確かめる
 export async function saveSnapshot(exp, { deviceKind = '' } = {}) {
   const json = JSON.stringify(exp);
   const fp = await fingerprint(analyzeForSync(exp).targetsForFingerprint);
@@ -96,17 +105,24 @@ export async function saveSnapshot(exp, { deviceKind = '' } = {}) {
   const ok = !!back && back.json === json;
   return { ok, id, fingerprint: fp, bytes: rec.bytes, at: rec.at, storage };
 }
+
+// バックアップファイル名（英数字だけ）
 export function presyncFileName(d = new Date()) {
   const p = n => String(n).padStart(2, '0');
   return `factory-presync-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
 }
+
+// ---- クラウド ----
 const uidOrThrow = () => { const u = currentUid(); if (!u) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' }); return u; };
+
 export async function readMeta() {
   const uid = uidOrThrow();
   const { fs, db } = await firestoreHandle();
   const snap = await fs.getDocFromServer(fs.doc(db, ...META_PATH(uid)));
   return snap.exists() ? { raw: snap.data(), ...describeMeta(snap.data()) } : { state: 'empty' };
 }
+
+// 登録してよい状態か（クラウド側）
 export function cloudAllows(meta, deviceId) {
   if (meta.state === 'empty') return { ok: true, resume: false };
   if (meta.state === 'uploading' && meta.raw?.sourceDeviceId === deviceId) return { ok: true, resume: true, uploadId: meta.raw.uploadId };
@@ -114,18 +130,28 @@ export function cloudAllows(meta, deviceId) {
   if (meta.state === 'registered') return { ok: false, reason: 'クラウドはすでに登録済みです。初回登録はもう一度はできません（2台目以降は「取り込み」を使います）' };
   return { ok: false, reason: 'クラウドに想定外の印があります。何も変更していません。この画面をClaudeに送ってください' };
 }
+
+/**
+ * 初回登録の本体
+ * @param {object} p { plan, snapshotId, deviceId, deviceLabel, appVersion, schemaVersion, onProgress(phase, done, total) }
+ * 端末のデータには触れない。クラウドの削除はしない。
+ */
 export async function runRegistration({ plan, snapshotId, deviceId, deviceLabel, appVersion = '', schemaVersion = null, onProgress = () => {} }) {
   const uid = uidOrThrow();
   const { fs, db } = await firestoreHandle();
+  // 1) 直前にもう一度、クラウドの状態を確かめる
   onProgress('check', 0, plan.total);
   const meta = await readMeta();
   const allow = cloudAllows(meta, deviceId);
   if (!allow.ok) throw Object.assign(new Error(allow.reason), { code: 'not-allowed' });
+  // 同じ端末・同じ中身の続きなら同じ登録番号を使う（中身が変わっていれば新しい番号。古い途中の記録は使われない）
   const uploadId = allow.resume && meta.raw?.fingerprint === plan.fingerprint ? allow.uploadId : 'up-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   const metaRef = fs.doc(db, ...META_PATH(uid));
   const common = { uploadId, generation: 1, sourceDevice: deviceLabel, sourceDeviceId: deviceId, counts: plan.counts, total: plan.total, projectNames: plan.projectNames, fingerprint: plan.fingerprint, appVersion, schemaVersion, chunked: plan.chunked };
+  // 2) 「登録途中」の印（この時点ではほかの端末は取り込まない）
   await fs.setDoc(metaRef, { ...common, status: 'uploading', startedAt: fs.serverTimestamp() });
   await setSyncState({ uploadId, uid, snapshotId, fingerprint: plan.fingerprint, status: 'uploading', at: new Date().toISOString() });
+  // 3) 少しずつ送る（同じ記録は同じ名前で上書き＝二重にならない）
   const ops = [];
   for (const it of plan.items) {
     const head = { id: it.id, store: it.store, hash: it.hash, bytes: it.bytes, uploadId, rev: it.rev, updatedAt: it.updatedAt, projectId: it.projectId };
@@ -143,19 +169,24 @@ export async function runRegistration({ plan, snapshotId, deviceId, deviceLabel,
     done += n;
     onProgress('upload', done, ops.length);
   }
+  // 4) 全件を読み直して照合
   onProgress('verify', 0, plan.total);
   const result = await verifyCloud({ plan, uploadId });
   if (!result.ok) {
     await setSyncState({ uploadId, uid, snapshotId, fingerprint: plan.fingerprint, status: 'verify-failed', at: new Date().toISOString(), mismatches: result.mismatches.slice(0, 20) });
     throw Object.assign(new Error(`照合で一致しない記録が ${result.mismatches.length} 件ありました。「登録済み」にはしていません`), { code: 'verify-failed', mismatches: result.mismatches });
   }
+  // 5) 一致したときだけ「登録済み」の印
   await fs.setDoc(metaRef, { ...common, status: 'complete', verified: result.checked, registeredAt: fs.serverTimestamp() }, { merge: true });
   const after = await readMeta();
   if (after.state !== 'registered') throw Object.assign(new Error('「登録済み」の印を確認できませんでした。もう一度送ってください'), { code: 'meta-not-complete' });
+  // 6) 照合用の記録（Sync-3で、どちらで変更されたかを見分けるのに使う）。Factoryとは別のデータベース
   await setSyncState({ uploadId, uid, snapshotId, fingerprint: plan.fingerprint, status: 'complete', at: new Date().toISOString(), hashes: Object.fromEntries(plan.items.map(it => [`${it.store}/${it.id}`, it.hash])) });
   onProgress('done', plan.total, plan.total);
   return { uploadId, checked: result.checked, extras: result.extras, meta: after };
 }
+
+// クラウドの中身を読み直して、送った内容と1件ずつ照合する（読むだけ）
 export async function verifyCloud({ plan, uploadId }) {
   const uid = uidOrThrow();
   const { fs, db } = await firestoreHandle();
@@ -176,13 +207,14 @@ export async function verifyCloud({ plan, uploadId }) {
     for (const it of list) {
       const x = got[it.docId];
       if (!x) { mismatches.push({ store, id: it.id, reason: 'クラウドにありません' }); continue; }
-      const json = it.parts ? (chunkMap[`${store}~${it.docId}`] || []).join('') : x.json;
+      const json = it.parts ? (chunkMap[`${store}~${it.docId}`] || []).slice(0, x.parts || it.parts.length).join('') : x.json;
       if (typeof json !== 'string' || x.hash !== it.hash || (await sha256(json)) !== it.hash) { mismatches.push({ store, id: it.id, reason: '内容が一致しません' }); continue; }
       checked++;
     }
   }
   return { ok: !mismatches.length && checked === plan.total, checked, mismatches, extras };
 }
+
 export function registerErrorMessage(e) {
   if (e?.code === 'not-allowed') return { title: '初回登録はできません', how: e.message };
   if (e?.code === 'verify-failed') return { title: '照合が一致しませんでした', how: `${e.message}。もう一度「送る」を押してください。続く場合は、この画面をClaudeに送ってください。この端末のデータは変更していません。` };
