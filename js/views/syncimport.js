@@ -5,15 +5,15 @@ import { initAuth, authState, deviceKind } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 import { loadInitialProjects } from '../seed.js';
 import { analyzeForSync, fingerprint, STORE_LABELS_JA } from '../sync/dryrun.js';
-import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot, saveImportSnapshotFallback } from '../sync/pull.js';
+import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot, saveImportSnapshotFallback, getImportSnapshotFallback } from '../sync/pull.js';
 import { getSnapshot } from '../sync/register.js';
 import { loadMaster } from '../master.js';
 
 const mb = n => `${(n / 1024 / 1024).toFixed(2)}MB`;
 const WIZARD_KEY = 'factory-sync-import-wizard-v1';
-const loadWizard = () => { try { return JSON.parse(sessionStorage.getItem(WIZARD_KEY) || '{}'); } catch { return {}; } };
-const saveWizard = x => { try { sessionStorage.setItem(WIZARD_KEY, JSON.stringify(x)); } catch {} };
-const clearWizard = () => { try { sessionStorage.removeItem(WIZARD_KEY); } catch {} };
+const loadWizard = () => { try { return JSON.parse(localStorage.getItem(WIZARD_KEY) || '{}'); } catch { return {}; } };
+const saveWizard = x => { try { localStorage.setItem(WIZARD_KEY, JSON.stringify(x)); } catch {} };
+const clearWizard = () => { try { localStorage.removeItem(WIZARD_KEY); } catch {} };
 const when = iso => { try { return iso ? new Date(iso).toLocaleString('ja-JP') : '不明'; } catch { return iso; } };
 async function expectedNames() { try { const d = await loadInitialProjects(); return [d.factory?.name, ...d.projects.map(p => p.name)].filter(Boolean); } catch { return []; } }
 export function preimportFileName(d = new Date()) {
@@ -119,7 +119,8 @@ export async function syncImportView(ctx, view) {
     st.checks = checks;
     if (!st.snapshot && st.snapshotId) {
       try {
-        const snap = await getSnapshot(st.snapshotId);
+        let snap = await getSnapshot(st.snapshotId);
+        if (!snap) snap = getImportSnapshotFallback(st.snapshotId);
         if (snap && snap.fingerprint === localFp) st.snapshot = snap;
         else { st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false; }
       } catch {}
