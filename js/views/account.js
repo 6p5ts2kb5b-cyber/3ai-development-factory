@@ -4,7 +4,7 @@ import { esc, toast, copyText } from '../ui.js';
 import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 
-const NOTE = 'この段階（Sync-2-2）では、Googleログイン・「クラウドの状態の確認（読むだけ）」・「同期の予行演習（確認だけ）」ができます。Factoryのデータ（プロジェクト・仕様書など）は、クラウドへ送ったり、受け取ったりしません。この端末のデータはそのままです。';
+const NOTE = 'この段階（Sync-2-3）では、Googleログイン・クラウドの状態の確認・同期の予行演習・初回正本登録ができます。クラウドへ書き込むのは「初回正本登録」で登録ボタンを押したときだけです。この端末のデータは変更しません。';
 
 export async function accountView(view) {
   view.innerHTML = `<h1>Googleログイン</h1>
@@ -22,6 +22,11 @@ export async function accountView(view) {
       <h2>同期の予行演習（確認だけ）</h2>
       <p class="muted">初回登録で何を何件送ることになるかを、この端末について調べます。クラウドへは送りません。ログインしていなくても確認できます。</p>
       <a class="btn" href="#/sync-check">同期の予行演習を開く</a>
+    </section>
+    <section class="card" id="register-card">
+      <h2>初回正本登録</h2>
+      <p class="muted">8プロジェクトが正しく入っている端末で、事前チェックとバックアップをしてから、この端末のデータをクラウドへ初めて登録します。「この端末を初回正本にする」を選んで登録ボタンを押すまで、クラウドへは書き込みません。</p>
+      <a class="btn" href="#/sync-register">初回正本登録を開く</a>
     </section>`;
   const card = view.querySelector('#acc-card');
   let busy = false;
@@ -83,9 +88,9 @@ export async function accountView(view) {
 export function accountCardHtml() {
   return `<section class="card">
       <h2>Googleログイン・同期</h2>
-      <p><span class="badge">準備中（Sync-2-2）</span> Googleログイン、クラウドの状態の確認（読むだけ）、同期の予行演習（確認だけ）ができます。データの同期はまだ行いません。</p>
+      <p><span class="badge">準備中（Sync-2-3）</span> Googleログイン、クラウドの状態の確認、同期の予行演習、初回正本登録ができます。2台目以降の取り込みと自動の同期はまだです。</p>
       <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルでも行えます。（Firebase ${esc(FIREBASE_SDK_VERSION)}・無料のSparkプラン）</p>
-      <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a></div>
+      <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a><a class="btn" href="#/sync-register">初回正本登録</a></div>
     </section>`;
 }
 
