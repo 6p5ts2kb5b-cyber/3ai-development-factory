@@ -4,7 +4,7 @@ import { esc, toast, copyText } from '../ui.js';
 import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 
-const NOTE = 'この段階（Sync-2-3）では、Googleログイン・クラウドの状態の確認・同期の予行演習・初回正本登録ができます。クラウドへ書き込むのは「初回正本登録」で登録ボタンを押したときだけです。この端末のデータは変更しません。';
+const NOTE = 'この段階（Sync-2-4）では、Googleログイン・クラウドの状態確認・同期の予行演習・初回正本登録・この端末への取り込みができます。取り込みはクラウドを読むだけで、クラウドのデータは変更しません。';
 
 export async function accountView(view) {
   view.innerHTML = `<h1>Googleログイン</h1>
@@ -25,8 +25,13 @@ export async function accountView(view) {
     </section>
     <section class="card" id="register-card">
       <h2>初回正本登録</h2>
-      <p class="muted">8プロジェクトが正しく入っている端末で、事前チェックとバックアップをしてから、この端末のデータをクラウドへ初めて登録します。「この端末を初回正本にする」を選んで登録ボタンを押すまで、クラウドへは書き込みません。</p>
+      <p class="muted">8プロジェクトが正しく入っている端末で、事前チェックとバックアップをしてから、この端末のデータをクラウドへ初めて登録します。</p>
       <a class="btn" href="#/sync-register">初回正本登録を開く</a>
+    </section>
+    <section class="card" id="import-card">
+      <h2>この端末へ取り込む</h2>
+      <p class="muted">登録済みのクラウドデータを、この端末へ安全に取り込みます。取り込み前に、この端末のデータを必ずバックアップします。</p>
+      <a class="btn" href="#/sync-import">この端末へ取り込む</a>
     </section>`;
   const card = view.querySelector('#acc-card');
   let busy = false;
@@ -71,26 +76,38 @@ export async function accountView(view) {
   };
   const cBtn = view.querySelector('#cloud-check'), cRes = view.querySelector('#cloud-result'), cHint = view.querySelector('#cloud-hint');
   const cloudAuth = s => { if (!cBtn.isConnected) return; const ok = s.status === 'signedIn'; if (!cBtn.dataset.busy) cBtn.disabled = !ok; cHint.hidden = ok; };
+  const applyCloudState = r => {
+    if (cRes.isConnected) cRes.innerHTML = cloudResultHtml(r);
+    const reg = view.querySelector('#register-card');
+    if (reg && r.state === 'registered') {
+      reg.innerHTML = `<h2>初回正本登録</h2><p><span class="badge ok">登録済み</span> 登録元：${esc(r.sourceDevice || '不明')}・世代${esc(r.generation ?? '不明')}</p><p class="muted">初回正本登録は完了しています。再登録はしません。</p><a class="btn primary" href="#/sync-import">この端末へ取り込む</a>`;
+    }
+  };
   cBtn.onclick = async () => {
     cBtn.dataset.busy = '1'; cBtn.disabled = true; cBtn.textContent = '確認しています…';
     const r = await checkCloudStatus();
     delete cBtn.dataset.busy; cBtn.disabled = false; cBtn.textContent = 'もう一度確認';
-    if (cRes.isConnected) cRes.innerHTML = cloudResultHtml(r);
+    applyCloudState(r);
   };
   const offCloud = onAuth(cloudAuth);
   const off0 = onAuth(render);
   const off = () => { off0(); offCloud(); };
   const stop = () => { off(); removeEventListener('hashchange', stop); };
   addEventListener('hashchange', stop);
-  await initAuth();
+  const ready = await initAuth();
+  if (ready.status === 'signedIn' && cBtn.isConnected && !cBtn.dataset.busy) {
+    cBtn.dataset.busy = '1'; cBtn.disabled = true; cBtn.textContent = '確認しています…';
+    const r = await checkCloudStatus();
+    delete cBtn.dataset.busy; cBtn.disabled = false; cBtn.textContent = 'もう一度確認'; applyCloudState(r);
+  }
 }
 
 export function accountCardHtml() {
   return `<section class="card">
       <h2>Googleログイン・同期</h2>
-      <p><span class="badge">準備中（Sync-2-3）</span> Googleログイン、クラウドの状態の確認、同期の予行演習、初回正本登録ができます。2台目以降の取り込みと自動の同期はまだです。</p>
+      <p><span class="badge">準備中（Sync-2-4）</span> Googleログイン、クラウドの状態の確認、同期の予行演習、初回正本登録、この端末への取り込みができます。双方向の自動同期はまだです。</p>
       <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルでも行えます。（Firebase ${esc(FIREBASE_SDK_VERSION)}・無料のSparkプラン）</p>
-      <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a><a class="btn" href="#/sync-register">初回正本登録</a></div>
+      <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a><a class="btn" href="#/sync-register">初回正本登録</a><a class="btn" href="#/sync-import">この端末へ取り込む</a></div>
     </section>`;
 }
 
