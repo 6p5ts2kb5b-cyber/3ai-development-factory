@@ -446,3 +446,8 @@ code.uid { font-size: .8rem; word-break: break-all; background: var(--surface-2)
 
 /* ---- Sync-2-1：クラウド状態表示 ---- */
 #cloud-result .badge { white-space: normal; }
+
+/* ---- Sync-2-3：初回正本登録 ---- */
+.rg-progress { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.rg-progress[hidden] { display: none; }
+.rg-progress .card { max-width: 420px; width: 100%; }
