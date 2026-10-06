@@ -1,0 +1,9 @@
+3AI Development Factory v0.8.6
+
+Sync-2-4 iPhone取り込み安定化:
+- 取り込み画面の進行状態を保持
+- バックアップ用JSONを開いて戻っても状態を復元
+- 事前チェック後に「次へ：バックアップ」を追加
+- iPhoneの古いキャッシュを避けるため読み込みを更新
+- Service Worker cache: factory-v14
+- クラウドは引き続き読み取りのみ
