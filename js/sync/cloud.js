@@ -13,8 +13,13 @@ const defaultLoader = () => import(FIRESTORE_URL);
 let loader = defaultLoader;
 export function _setFirestoreLoader(fn) { loader = fn || defaultLoader; fsMod = null; db = null; }
 let fsMod = null, db = null;
-
-// 状態：'signedOut' | 'empty'（まだ登録されていない）| 'uploading'（登録途中）| 'registered'（登録済み）| 'unknown'（印の形が想定外）| 'denied' | 'offline' | 'error'
+export async function firestoreHandle() {
+  const app = firebaseApp();
+  if (!app) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' });
+  try { fsMod = fsMod || await loader(); } catch { throw Object.assign(new Error('sdk'), { code: 'sdk-load-failed' }); }
+  db = db || fsMod.getFirestore(app);
+  return { fs: fsMod, db };
+}
 const MESSAGES = {
   'permission-denied': ['クラウドを使う許可がありません', 'Firebaseの「Firestore Database」の owners に、このアカウントのユーザーIDが登録されているか、Security Rules が公開されているかを確認してください。'],
   'unavailable': ['クラウドに接続できませんでした', 'インターネット接続を確認して、もう一度押してください。学校のネットワークで止められている可能性もあります。'],
@@ -29,8 +34,6 @@ export function cloudErrorMessage(e) {
   const [title, how] = MESSAGES[code] || ['クラウドの状態を確認できませんでした', `もう一度押してください。続く場合は、この表示（${code || e?.message || '不明なエラー'}）をClaudeに伝えてください。`];
   return { code, title, how };
 }
-
-// 「登録済みの印」の中身を画面用に整える（想定外の形でも落ちない）
 export function describeMeta(data) {
   if (!data || typeof data !== 'object') return { state: 'unknown' };
   const counts = data.counts && typeof data.counts === 'object' ? Object.fromEntries(Object.entries(data.counts).filter(([, v]) => Number.isFinite(v))) : {};
@@ -40,8 +43,6 @@ export function describeMeta(data) {
   if (data.status === 'uploading') return { state: 'uploading', startedAt: at(data.startedAt), ...base };
   return { state: 'unknown', ...base };
 }
-
-// クラウドの状態を確認する（読むのは1件だけ）
 export async function checkCloudStatus({ online = (typeof navigator === 'undefined' ? true : navigator.onLine) } = {}) {
   const checkedAt = new Date().toISOString();
   await initAuth();
@@ -52,7 +53,6 @@ export async function checkCloudStatus({ online = (typeof navigator === 'undefin
   catch { return { state: 'error', checkedAt, error: cloudErrorMessage({ code: 'sdk-load-failed' }) }; }
   try {
     db = db || fsMod.getFirestore(app);
-    // 端末の一時保存（キャッシュ）ではなく、必ずクラウドの最新を読む
     const snap = await fsMod.getDocFromServer(fsMod.doc(db, ...META_PATH(uid)));
     if (!snap.exists()) return { state: 'empty', checkedAt, uid };
     return { ...describeMeta(snap.data()), checkedAt, uid };
