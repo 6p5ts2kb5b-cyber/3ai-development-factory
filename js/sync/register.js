@@ -59,7 +59,20 @@ const idbReq = q => new Promise((res, rej) => { q.onsuccess = () => res(q.result
 async function syncPut(store, rec) { const d = await openSyncDB(); try { await idbReq(d.transaction(store, 'readwrite').objectStore(store).put(rec)); } finally { d.close(); } }
 async function syncGet(store, id) { const d = await openSyncDB(); try { return await idbReq(d.transaction(store).objectStore(store).get(id)); } finally { d.close(); } }
 export async function listSnapshots() { const d = await openSyncDB(); try { return (await idbReq(d.transaction('snapshots').objectStore('snapshots').getAll())).sort((a, b) => (a.at < b.at ? 1 : -1)); } finally { d.close(); } }
-export const getSnapshot = id => syncGet('snapshots', id);
+const SNAP_FALLBACK_PREFIX = 'factory-sync-snapshot:';
+function fallbackSnapshotGet(id) {
+  try { const s = localStorage.getItem(SNAP_FALLBACK_PREFIX + id); return s ? JSON.parse(s) : undefined; } catch { return undefined; }
+}
+function fallbackSnapshotPut(rec) {
+  localStorage.setItem(SNAP_FALLBACK_PREFIX + rec.id, JSON.stringify(rec));
+}
+export async function getSnapshot(id) {
+  try {
+    const v = await syncGet('snapshots', id);
+    if (v) return v;
+  } catch {}
+  return fallbackSnapshotGet(id);
+}
 export const getSyncState = () => syncGet('state', 'register');
 const setSyncState = rec => syncPut('state', { id: 'register', ...rec });
 export async function saveSnapshot(exp, { deviceKind = '' } = {}) {
@@ -67,10 +80,21 @@ export async function saveSnapshot(exp, { deviceKind = '' } = {}) {
   const fp = await fingerprint(analyzeForSync(exp).targetsForFingerprint);
   const id = 'presync-' + new Date().toISOString().replace(/[:.]/g, '-');
   const rec = { id, at: new Date().toISOString(), deviceKind, fingerprint: fp, counts: exp.counts || {}, bytes: bytesOf(json), json };
-  await syncPut('snapshots', rec);
-  const back = await getSnapshot(id);
+  let storage = 'indexeddb';
+  try {
+    await syncPut('snapshots', rec);
+  } catch {
+    storage = 'localstorage';
+    fallbackSnapshotPut(rec);
+  }
+  let back = await getSnapshot(id);
+  if (!back || back.json !== json) {
+    storage = 'localstorage';
+    fallbackSnapshotPut(rec);
+    back = await getSnapshot(id);
+  }
   const ok = !!back && back.json === json;
-  return { ok, id, fingerprint: fp, bytes: rec.bytes, at: rec.at };
+  return { ok, id, fingerprint: fp, bytes: rec.bytes, at: rec.at, storage };
 }
 export function presyncFileName(d = new Date()) {
   const p = n => String(n).padStart(2, '0');
