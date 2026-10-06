@@ -11,7 +11,7 @@ import { sha256, saveSnapshot, getSnapshot } from './register.js';
 
 const SYNC_DB = 'factory-sync';
 const IMPORT_SNAPSHOT_PREFIX = 'factory-import-snapshot:';
-function getImportSnapshotFallback(id) {
+export function getImportSnapshotFallback(id) {
   try { const s = localStorage.getItem(IMPORT_SNAPSHOT_PREFIX + id); return s ? JSON.parse(s) : null; } catch { return null; }
 }
 export function saveImportSnapshotFallback(rec) {
