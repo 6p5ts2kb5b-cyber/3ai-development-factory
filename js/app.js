@@ -22,7 +22,7 @@ import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
 import { syncImportView } from './views/syncimport.js';
-export const APP_VERSION = '0.8.5';
+export const APP_VERSION = '0.8.6';
 const view = document.getElementById('view');
 
 let db, master, handoff;
