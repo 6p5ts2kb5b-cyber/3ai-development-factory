@@ -1,0 +1,5 @@
+3AI Development Factory v0.9.0
+- Sync-2-4 iPhone file-preview state persistence fix
+- Wizard state moved from sessionStorage to localStorage
+- Import screen restores the internal snapshot from the dedicated fallback copy when IndexedDB/session state is lost
+- Service Worker factory-v18
