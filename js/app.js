@@ -20,7 +20,8 @@ import { safeCopy } from './views/safecopy.js';
 
 import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
-export const APP_VERSION = '0.8.3';
+import { syncRegisterView } from './views/syncregister.js';
+export const APP_VERSION = '0.8.4';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -69,10 +70,11 @@ const routes = {
   '/v1': () => v1View(ctx, view, { loadHandoff }),
   '/account': () => accountView(view), // Sync-1：Googleログインだけ（データは送受信しない）
   '/sync-check': () => syncCheckView(ctx, view), // Sync-2-2：登録の予行演習（確認だけ・送信しない）
+  '/sync-register': () => syncRegisterView(ctx, view, { appVersion: APP_VERSION }), // Sync-2-3：初回正本登録
 };
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
 // メニューのどこを選択中にするか
-const NAV_OF = { '/sync-check': '/settings', '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
+const NAV_OF = { '/sync-register': '/settings', '/sync-check': '/settings', '/account': '/settings', '/v1': '/settings', '/': '/', '/talk': '/talk', '/requests': '/requests', '/settings': '/settings', '/system': '/settings', '/backup': '/backup', '/trash': '/backup', '/handoff': '/handoff' };
 async function route({ keepScroll = false } = {}) {
   const path = (location.hash.replace(/^#/, '') || '/').split('?')[0];
   const seg = path.split('/').filter(Boolean);
