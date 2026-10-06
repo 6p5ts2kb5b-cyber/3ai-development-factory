@@ -1,0 +1,6 @@
+3AI Development Factory v0.8.8
+- Sync-2-4 iPhone backup flow split into two steps
+- Step 1 creates and verifies local internal snapshot
+- Step 2 saves JSON backup file only after snapshot state is persisted
+- Prevents iPhone file preview from interrupting snapshot state save
+- Service Worker factory-v16
