@@ -1,12 +1,12 @@
 // オフライン動作用。アプリ本体のファイルを端末に保存し、電波がなくても起動できるようにします。
 // ファイルを更新したら CACHE の版数を上げてください（例：factory-v2）。
-const CACHE = 'factory-v13';
+const CACHE = 'factory-v14';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/app.js', 'js/db.js', 'js/schema.js', 'js/master.js', 'js/handoff.js', 'js/backup.js', 'js/ui.js', 'js/sync/adapter.js',
   'js/logic.js', 'js/labels.js', 'js/views/home.js', 'js/views/project.js', 'js/views/talk.js', 'js/views/requests.js', 'js/views/projectForm.js', 'js/views/spec.js', 'js/diff.js', 'js/guide.js', 'js/ai.js', 'js/privacy.js', 'js/views/compare.js', 'js/views/files.js', 'js/views/urls.js', 'js/views/safecopy.js', 'js/views/tests.js', 'js/views/checks.js', 'js/views/phandoff.js', 'js/views/v1.js', 'js/views/importer.js', 'js/seed.js', 'js/sync/auth.js', 'js/sync/cloud.js', 'js/sync/dryrun.js', 'js/sync/register.js', 'js/views/synccheck.js', 'js/views/syncregister.js', 'js/views/account.js',
   'config/master.json', 'config/handoff.json', 'config/initial-projects.json', 'config/firebase.json',
-  'VERSION-0.8.5.txt', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+  'VERSION-0.8.6.txt', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'tests/', 'tests/index.html', 'tests/tests.js',
 ];
 
