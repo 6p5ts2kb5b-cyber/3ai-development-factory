@@ -6,9 +6,14 @@ import { checkCloudStatus } from '../sync/cloud.js';
 import { loadInitialProjects } from '../seed.js';
 import { analyzeForSync, fingerprint, STORE_LABELS_JA } from '../sync/dryrun.js';
 import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot } from '../sync/pull.js';
+import { getSnapshot } from '../sync/register.js';
 import { loadMaster } from '../master.js';
 
 const mb = n => `${(n / 1024 / 1024).toFixed(2)}MB`;
+const WIZARD_KEY = 'factory-sync-import-wizard-v1';
+const loadWizard = () => { try { return JSON.parse(sessionStorage.getItem(WIZARD_KEY) || '{}'); } catch { return {}; } };
+const saveWizard = x => { try { sessionStorage.setItem(WIZARD_KEY, JSON.stringify(x)); } catch {} };
+const clearWizard = () => { try { sessionStorage.removeItem(WIZARD_KEY); } catch {} };
 const when = iso => { try { return iso ? new Date(iso).toLocaleString('ja-JP') : '不明'; } catch { return iso; } };
 async function expectedNames() { try { const d = await loadInitialProjects(); return [d.factory?.name, ...d.projects.map(p => p.name)].filter(Boolean); } catch { return []; } }
 export function preimportFileName(d = new Date()) {
@@ -17,7 +22,8 @@ export function preimportFileName(d = new Date()) {
 }
 
 export async function syncImportView(ctx, view) {
-  const st = { checks: null, cloud: null, cloudA: null, local: null, snapshot: null, fileSaved: false, fileConfirmed: false, switchOk: false, busy: false, done: null, error: null, same: false };
+  const saved = loadWizard();
+  const st = { checks: null, cloud: null, cloudA: null, local: null, snapshot: null, fileSaved: !!saved.fileSaved, fileName: saved.fileName || '', fileConfirmed: !!saved.fileConfirmed, switchOk: false, busy: false, done: null, error: null, same: false, snapshotId: saved.snapshotId || null };
   const device = deviceKind();
   view.innerHTML = `<a class="back" href="#/account">← Googleログイン・同期</a>
     <h1>この端末へ取り込む</h1>
@@ -42,6 +48,7 @@ export async function syncImportView(ctx, view) {
         <p class="muted">この端末：<strong>${esc(device)}</strong></p>
         ${c ? `<ul class="cond">${c.map(x => `<li class="${x.ok ? 'ok' : 'ng'}"><span class="mark">${x.ok ? '✅' : '⬜'}</span><div><strong>${esc(x.label)}</strong><div class="muted">${esc(x.detail)}</div></div></li>`).join('')}</ul>` : '<p>まず、クラウドの状態と取り込む内容を確認します（クラウドは読むだけです）。</p>'}
         <button class="btn${c ? '' : ' primary'}" id="im-check"${st.busy ? ' disabled' : ''}>${c ? 'もう一度確認する' : 'クラウドの内容を確認する'}</button>
+        ${checksOk && st.cloud?.ok && !st.same ? '<button class="btn primary" id="im-next-backup">次へ：バックアップ</button>' : ''}
       </section>
       ${C ? `<section class="card" id="im-cloud">
         <h2>2. クラウドから取り込む内容</h2>
@@ -109,7 +116,15 @@ export async function syncImportView(ctx, view) {
     const localFp = await fingerprint(st.local.analysis.targetsForFingerprint);
     st.same = !!(st.cloud && st.cloud.fingerprint && localFp === st.cloud.fingerprint);
     st.checks = checks;
-    if (st.snapshot && st.snapshot.fingerprint !== localFp) { st.snapshot = null; st.fileSaved = false; st.fileConfirmed = false; }
+    if (!st.snapshot && st.snapshotId) {
+      try {
+        const snap = await getSnapshot(st.snapshotId);
+        if (snap && snap.fingerprint === localFp) st.snapshot = snap;
+        else { st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false; }
+      } catch {}
+    }
+    if (st.snapshot && st.snapshot.fingerprint !== localFp) { st.snapshot = null; st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false; }
+    saveWizard({ snapshotId: st.snapshot?.id || st.snapshotId || null, fileSaved: st.fileSaved, fileName: st.fileName || '', fileConfirmed: st.fileConfirmed });
     st.busy = false; render();
   };
 
@@ -119,7 +134,8 @@ export async function syncImportView(ctx, view) {
       st.snapshot = await saveSnapshot(st.exp, { deviceKind: device });
       st.fileName = preimportFileName();
       downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
-      st.fileSaved = true; st.fileConfirmed = false;
+      st.fileSaved = true; st.fileConfirmed = false; st.snapshotId = st.snapshot.id;
+      saveWizard({ snapshotId: st.snapshot.id, fileSaved: true, fileName: st.fileName, fileConfirmed: false });
       toast('この端末のデータをバックアップしました');
     } catch (e) { st.snapshot = { ok: false }; st.error = { title: 'バックアップを作成できませんでした', how: `${e?.message || e}（この端末のデータは変えていません）` }; }
     st.busy = false; render();
@@ -138,6 +154,7 @@ export async function syncImportView(ctx, view) {
       const r = await runImport(ctx.db, { snapshotId: st.snapshot.id, expectedFingerprint: st.cloud.fingerprint, onProgress: ph => { const q = s => body.querySelector(s); if (q('#im-phase')) { q('#im-phase').textContent = label[ph]; q('#im-bar').style.width = `${pct[ph]}%`; } } });
       try { await loadMaster(ctx.db); } catch {}
       st.done = { ...r, names: st.cloudA.projects.names };
+      clearWizard();
       toast('取り込みが完了しました');
     } catch (e) { st.error = importErrorMessage(e); }
     removeEventListener('beforeunload', guard);
@@ -147,12 +164,14 @@ export async function syncImportView(ctx, view) {
   const bind = () => {
     const q = s => body.querySelector(s);
     q('#im-check') && (q('#im-check').onclick = runChecks);
+    q('#im-next-backup') && (q('#im-next-backup').onclick = () => body.querySelector('#im-backup')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     q('#im-backup-btn') && (q('#im-backup-btn').onclick = makeBackup);
-    q('#im-file-ok') && (q('#im-file-ok').onchange = e => { st.fileConfirmed = e.target.checked; render(); });
+    q('#im-file-ok') && (q('#im-file-ok').onchange = e => { st.fileConfirmed = e.target.checked; saveWizard({ snapshotId: st.snapshot?.id || st.snapshotId || null, fileSaved: st.fileSaved, fileName: st.fileName || '', fileConfirmed: st.fileConfirmed }); render(); });
     q('#im-switch') && (q('#im-switch').onchange = e => { st.switchOk = e.target.checked; render(); });
     q('#im-go') && (q('#im-go').onclick = doImport);
   };
   render();
+  if (saved.snapshotId || saved.fileSaved) setTimeout(() => runChecks(), 0);
 }
 
 function doneHtml(d, device) {
