@@ -21,7 +21,7 @@ import { safeCopy } from './views/safecopy.js';
 import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
-import { syncImportView } from './views/syncimport.js';
+import { syncImportView } from './views/syncimport.js?v=086';
 export const APP_VERSION = '0.8.6';
 const view = document.getElementById('view');
 
