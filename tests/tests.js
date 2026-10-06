@@ -19,6 +19,11 @@ import { PROJECT_CHILD_STORES } from '../js/db.js';
 import { loadInitialProjects, seedInitialProjects, seedStatus, seededCount } from '../js/seed.js';
 import { specItems, coverageSummary } from '../js/logic.js';
 import * as SyncAuth from '../js/sync/auth.js';
+import * as SyncCloud from '../js/sync/cloud.js';
+import * as Dry from '../js/sync/dryrun.js';
+import * as Reg from '../js/sync/register.js';
+import * as Pull from '../js/sync/pull.js';
+import * as S3 from '../js/sync/sync3.js';
 
 const TEST_DB = 'factory-test';
 const T = [];
@@ -1275,6 +1280,587 @@ test('【Sync-1 v0.8.1】ボタンを押した直後にポップアップを開�
   await sleep(20);
   eq([SyncAuth.authState().status, SyncAuth.authState().user?.uid, SyncAuth.authState().error], ['signedIn', 'late-1', null], '遅れて完了');
   SyncAuth._setLoader(null);
+});
+
+
+// ---------------- Phase Sync-2-1：クラウドの状態を確認（読み取りのみ） ----------------
+function fakeFirestore(mode) {
+  const ops = [];
+  const mod = {
+    getFirestore: app => { ops.push(['getFirestore', app?.name]); return { app }; },
+    doc: (db, ...path) => { ops.push(['doc', path.join('/')]); return { path: path.join('/') }; },
+    getDocFromServer: async ref => {
+      ops.push(['getDocFromServer', ref.path]);
+      if (mode.value === 'denied') { const e = new Error('x'); e.code = 'permission-denied'; throw e; }
+      if (mode.value === 'unavailable') { const e = new Error('x'); e.code = 'unavailable'; throw e; }
+      if (mode.value === 'registered') return { exists: () => true, data: () => ({ status: 'complete', sourceDevice: 'PC（Edge）', generation: 1, registeredAt: { toDate: () => new Date('2026-10-06T01:00:00Z') }, counts: { projects: 8, specs: 8 }, projectNames: ['Vintage Hunt'] }) };
+      if (mode.value === 'weird') return { exists: () => true, data: () => ({ status: 123 }) };
+      return { exists: () => false, data: () => undefined };
+    },
+  };
+  return { ops, mod };
+}
+
+test('【Sync-2-1】クラウドの確認は読むだけ（書き込みの命令を持たない・Factoryのデータに触れない）', async () => {
+  const src = await (await fetch('../js/sync/cloud.js', { cache: 'no-cache' })).text();
+  const code = src.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  assert(!/\b(setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction|setDocs|deleteField)\b/.test(code), 'cloud.js に書き込みの命令がある');
+  assert(!/from ['"][^'"]*db\.js['"]|indexedDB|FactoryDB|localStorage|sessionStorage/.test(code), 'cloud.js が端末のデータや保存領域を使っている');
+  assert(/getDocFromServer/.test(code), 'クラウドの最新を読んでいない');
+  eq(SyncCloud.META_PATH('u1').join('/'), 'users/u1/meta/factory', '読む場所');
+  eq(SyncCloud.FIRESTORE_URL, 'https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js', 'Firestoreの部品（公式配布元・同じ版）');
+  const app = await (await fetch('../js/app.js', { cache: 'no-cache' })).text();
+  assert(!/cloud\.js|checkCloudStatus/.test(app.split('async function boot')[1].split('// 画面部品へ渡す共通情報')[0]), '起動時にクラウドを確認している');
+  // 印の読み取り結果の整理・エラーの日本語
+  eq(SyncCloud.describeMeta({ status: 'complete', sourceDevice: 'PC', generation: 2, counts: { projects: 8, bad: 'x' }, registeredAt: '2026-10-06T00:00:00Z' }), { state: 'registered', registeredAt: '2026-10-06T00:00:00Z', sourceDevice: 'PC', generation: 2, counts: { projects: 8 }, projectNames: [] }, '登録済み');
+  eq(SyncCloud.describeMeta({ status: 'uploading' }).state, 'uploading', '登録途中');
+  eq([SyncCloud.describeMeta(null).state, SyncCloud.describeMeta({ status: 'x' }).state], ['unknown', 'unknown'], '想定外の形');
+  for (const c of ['permission-denied', 'unavailable', 'not-found', 'resource-exhausted', 'sdk-load-failed', 'firestore/permission-denied', 'zzz']) {
+    const m = SyncCloud.cloudErrorMessage({ code: c }); assert(m.title && m.how, `「${c}」の日本語表示`);
+  }
+  assert(SyncCloud.cloudErrorMessage({ code: 'resource-exhausted' }).how.includes('料金は発生しません'), '無料枠の案内');
+});
+
+test('【Sync-2-1】クラウドの状態：未ログイン・オフライン・空・登録済み・許可なし・接続不可（読むのは1件だけ）', async () => {
+  const mode = { value: 'empty' };
+  const f = fakeFirebase(), fs = fakeFirestore(mode);
+  let loads = 0;
+  SyncAuth._setLoader(async () => f.mod);
+  SyncCloud._setFirestoreLoader(async () => { loads++; return fs.mod; });
+  await SyncAuth.initAuth({ config: FAKE_CFG });
+  eq([(await SyncCloud.checkCloudStatus()).state, loads], ['signedOut', 0], '未ログインならFirestoreを読み込まない');
+  await SyncAuth.signIn({ env: {}, watchdogMs: 0 });
+  eq([(await SyncCloud.checkCloudStatus({ online: false })).state, loads], ['offline', 0], 'オフラインなら接続しない');
+  const before = JSON.stringify((await db.exportAll()).data);
+  const r1 = await SyncCloud.checkCloudStatus({ online: true });
+  eq([r1.state, r1.uid], ['empty', 'uid-123'], 'クラウドは空');
+  mode.value = 'registered';
+  const r2 = await SyncCloud.checkCloudStatus({ online: true });
+  eq([r2.state, r2.sourceDevice, r2.generation, r2.counts.projects, r2.registeredAt], ['registered', 'PC（Edge）', 1, 8, '2026-10-06T01:00:00.000Z'], '登録済み');
+  mode.value = 'weird'; eq((await SyncCloud.checkCloudStatus({ online: true })).state, 'unknown', '想定外の形');
+  mode.value = 'denied';
+  const r3 = await SyncCloud.checkCloudStatus({ online: true });
+  eq([r3.state, r3.error.title], ['denied', 'クラウドを使う許可がありません'], '許可なし（owners未登録など）');
+  mode.value = 'unavailable'; eq((await SyncCloud.checkCloudStatus({ online: true })).state, 'offline', '接続できない');
+  // 使った命令は「読む」だけ・読む場所は自分の印だけ
+  const names = [...new Set(fs.ops.map(o => o[0]))].sort();
+  eq(names, ['doc', 'getDocFromServer', 'getFirestore'], '使った命令');
+  assert(fs.ops.filter(o => o[0] === 'getDocFromServer').every(o => o[1] === 'users/uid-123/meta/factory'), '自分の印以外を読んだ');
+  eq(JSON.stringify((await db.exportAll()).data), before, 'Factoryのデータが変わった');
+  SyncCloud._setFirestoreLoader(null); SyncAuth._setLoader(null);
+});
+
+
+// ---------------- Phase Sync-2-2：登録の予行演習（確認だけ） ----------------
+test('【Sync-2-2】予行演習はクラウドへ送らず、端末のデータも変更しない（命令を持たない）', async () => {
+  for (const f of ['../js/sync/dryrun.js', '../js/views/synccheck.js']) {
+    const code = (await (await fetch(f, { cache: 'no-cache' })).text()).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+    assert(!/firebase|gstatic|cloud\.js|checkCloudStatus|initAuth|signIn\(/.test(code), `${f} がクラウド・Firebaseを使っている`);
+    assert(!/\.(create|update|upsert|remove|purge|restore|importAll|saveGuide|setOrigin|saveExisting)\(|downloadBackup|indexedDB\.|localStorage\.setItem/.test(code), `${f} に書き込みの命令がある`);
+  }
+  eq(Dry.SYNC_TARGET_STORES.includes('history') && Dry.SYNC_TARGET_STORES.includes('specs') && Dry.DEVICE_LOCAL_SETTINGS.join(), true && 'master,lastTestRun,lastBackup', '同期の対象・対象外');
+});
+
+test('【Sync-2-2】件数・プロジェクト名・同期しないもの・大きすぎるデータ・バックアップ可否・個人情報らしき記述', async () => {
+  const big = 'x'.repeat(950000);
+  const exp = { app: '3ai-factory', schemaVersion: 5, exportedAt: '2026-10-05T00:00:00Z', deviceId: 'd1', data: {
+    projects: [{ id: 'p1', name: 'Vintage Hunt', createdAt: '1', updatedAt: '2026-10-05T01:00:00Z', createdBy: '田中先生' }, { id: 'p2', name: 'Vintage Hunt', createdAt: '2', updatedAt: '2026-10-04T00:00:00Z' }, { id: 'p3', name: '秘密メモ', localOnly: true }],
+    specs: [{ id: 's1', projectId: 'p1', body: '連絡は tanaka@example.jp まで' }], requests: [{ id: 'r1', title: '田中君の練習を見る' }, { id: 'r2', title: '田中君と練習' }],
+    files: [{ id: 'f1', fileName: 'big.html', code: big }], history: [{ id: 'h1', store: 'projects', after: { memo: '電話 090-1234-5678' } }],
+    settings: [{ id: 'master', key: 'master', value: {} }, { id: 'lastTestRun', key: 'lastTestRun', value: {} }, { id: 'profile', key: 'profile', value: { name: '佐藤' } }],
+    compares: [], tests: [], urls: [], issues: [], ideas: [], tasks: [], guides: [], handoff: [], checks: [], trash: [],
+  } };
+  const r = Dry.analyzeForSync(exp, { expectedProjects: ['3AI Development Factory', 'Vintage Hunt'], checkBackup: j => FactoryDB.checkBackup(j) });
+  eq([r.main.projects, r.main.specs, r.main.requests, r.main.history, r.counts.settings, r.total], [2, 1, 2, 1, 1, 8], '件数（同期の対象だけ）');
+  eq([r.excluded.localOnly, r.excluded.deviceSettings.sort().join()], [1, 'lastTestRun,master'], '同期しないもの');
+  eq([r.projects.names.join(), r.projects.dupNames.join(), r.projects.missing.join()], ['Vintage Hunt,Vintage Hunt', 'Vintage Hunt', '3AI Development Factory'], 'プロジェクト名・重複・不足');
+  eq([r.size.tooLarge.length, r.size.tooLarge[0].label], [1, 'big.html'], '大きすぎるデータ');
+  eq([r.backup.ok, r.backup.bytes > 950000, r.blocking], [true, true, false], 'バックアップ可否');
+  eq(r.lastUpdated, '2026-10-05T01:00:00Z', '最後の更新');
+  const kinds = r.privacy.map(p => p.kind + ':' + p.text);
+  for (const w of ['メールアドレス:tanaka@example.jp', '人名らしき言葉:田中君', '電話番号:090-1234-5678']) assert(kinds.includes(w), `個人情報らしき記述「${w}」`);
+  eq(r.privacy.find(p => p.text === '田中君').count, 2, '同じ言葉はまとめて数える');
+  assert(!kinds.some(k => k.includes('田中先生')), '作成者名（管理用の情報）まで指摘している');
+  assert(r.issues.length >= 4, '確認が必要な点');
+  // バックアップが作れない場合
+  const bad = Dry.analyzeForSync({ ...exp, app: 'other' }, { checkBackup: j => FactoryDB.checkBackup(j) });
+  eq([bad.backup.ok, bad.blocking, bad.issues[0]], [false, true, 'バックアップを作れません'], 'バックアップ不可は初回登録に進めない');
+  // データの指紋：中身が同じなら同じ・違えば違う（並び順には左右されない）
+  const f1 = await Dry.fingerprint(r.targetsForFingerprint);
+  const f2 = await Dry.fingerprint(r.targetsForFingerprint.slice().reverse());
+  const f3 = await Dry.fingerprint(r.targetsForFingerprint.map(([s, x]) => [s, s === 'specs' ? { ...x, body: '別' } : x]));
+  eq([f1 === f2, f1 === f3, f1.length >= 11], [true, false, true], 'データの指紋');
+  assert(Dry.summaryText(r, { device: 'PC', fp: f1, checkedAt: 'now' }).includes('プロジェクト：2件（Vintage Hunt、Vintage Hunt）'), 'コピー用の文章');
+});
+
+test('【Sync-2-2】Phase 7の8プロジェクトがある端末で予行演習しても、データは1件も変わらない', async () => {
+  await delDB('factory-test22');
+  const d = await FactoryDB.open('factory-test22'); d.actor = 'テスト担当'; await loadMaster(d);
+  const seed = await loadInitialProjects(); await seedInitialProjects(d, seed);
+  const before = JSON.stringify((await d.exportAll()).data);
+  const exp = await d.exportAll();
+  const r = Dry.analyzeForSync(exp, { master: d.master, expectedProjects: [seed.factory.name, ...seed.projects.map(p => p.name)], checkBackup: j => FactoryDB.checkBackup(j) });
+  eq([r.projects.count, r.projects.missing.length, r.projects.dupNames.length, r.main.specs, r.backup.ok, r.size.tooLarge.length], [8, 0, 0, 8, true, 0], '8プロジェクトの端末');
+  eq(r.projects.names, [seed.factory.name, ...seed.projects.map(p => p.name)], 'Phase 7の順（Factory本体 → 開発順）で並ぶ');
+  eq(r.privacy.length, 0, '仕様の一般的な言葉（生徒・保護者など）を個人情報として数えない');
+  assert(r.main.history > 0 && r.counts.tests >= 7 * 17 && r.counts.tasks >= 14, '変更履歴・テスト・次にやることを数えている');
+  await Dry.fingerprint(r.targetsForFingerprint);
+  eq(JSON.stringify((await d.exportAll()).data), before, '予行演習でデータが変わった');
+  d.close(); await delDB('factory-test22');
+});
+
+
+test('【Sync-2-2】個人情報チェックは長いコード（30万文字）でも固まらない', async () => {
+  for (const ch of ['x', '1', 'a.', 'ab1-']) {
+    const t = performance.now(); findPersonalInfo(ch.repeat(Math.ceil(300000 / ch.length))); const ms = performance.now() - t;
+    assert(ms < 3000, `「${ch}」の繰り返しで ${Math.round(ms)}ms かかった`);
+  }
+  const f = findPersonalInfo('連絡 tanaka@example.jp / a.b+c@mail.co.jp').map(x => x.text);
+  eq(f, ['tanaka@example.jp', 'a.b+c@mail.co.jp'], 'メールアドレスの判定は今までどおり');
+});
+
+
+test('【v0.8.4】個人情報チェック：日付・日時の数字を電話番号・郵便番号と間違えない（本物は今までどおり見つける）', async () => {
+  const neg = ['factory-backup-20261005-1023.json', '20261005-1023', '2026-10-05T01:23:45.678Z', '2026/10/05 10:23', '2026年10月5日 10:23', '確定 2026-10-05T10:23:00+09:00', 'id m8k2026100510231x', '12345-6789-0123'];
+  for (const t of neg) eq(findPersonalInfo(t).map(f => f.kind + ':' + f.text), [], `「${t}」を誤検出`);
+  const pos = [['090-1234-5678', '電話番号:090-1234-5678'], ['03-1234-5678', '電話番号:03-1234-5678'], ['0465-12-3456', '電話番号:0465-12-3456'], ['+81 90-1234-5678', '電話番号:+81 90-1234-5678'], ['TEL:03-1234-5678', '電話番号:03-1234-5678'],
+    ['〒350-1305', '郵便番号:〒350-1305'], ['350-1305', '郵便番号:350-1305'], ['学籍番号：12345', '学籍番号・出席番号らしき数字:学籍番号：12345'], ['tanaka@example.jp', 'メールアドレス:tanaka@example.jp']];
+  for (const [t, want] of pos) assert(findPersonalInfo(t).map(f => f.kind + ':' + f.text).includes(want), `「${t}」を見つけられない`);
+  eq(findPersonalInfo('090-1234-5678').length, 1, '電話番号の一部を郵便番号として二重に数えない');
+  // 日付の近くにあっても本物は見つける
+  assert(findPersonalInfo('2026-10-05 電話 090-1234-5678').some(f => f.text === '090-1234-5678'), '日付の近くの電話番号');
+  // 匿名化も日付は変えない
+  eq(anonymize('電話090-1234-5678、〒350-1305、保存 factory-backup-20261005-1023.json 2026-10-05T10:23:00Z'), '電話[電話番号]、[郵便番号]、保存 factory-backup-20261005-1023.json 2026-10-05T10:23:00Z', '匿名化');
+  // 予行演習：変更履歴の日時・バックアップのファイル名を数えない
+  const exp = { app: '3ai-factory', schemaVersion: 5, data: { settings: [{ id: 'profile', key: 'profile', value: { name: '先生' } }],
+    history: [{ id: 'h1', store: 'settings', action: 'create', at: '2026-10-05T10:23:00.000Z', changes: { value: { from: null, to: { at: '2026-10-05T10:23:00.000Z', fileName: 'factory-backup-20261005-1023.json' } } } }],
+    projects: [{ id: 'p', name: 'X', memo: '連絡 090-1111-2222', fixedAt: '2026-10-05T10:23:00Z', note: '2026-10-05' }] } };
+  const r = Dry.analyzeForSync(exp, {});
+  eq(r.privacy.map(p => p.kind + ':' + p.text), ['電話番号:090-1111-2222'], '予行演習の個人情報らしき記述');
+});
+
+
+// ---------------- Phase Sync-2-3：初回正本登録 ----------------
+// 端末の中だけで動く「にせFirestore」（本物と同じ命令の形。削除の命令は持たない）
+function memFirestore() {
+  const docs = new Map(); const ops = []; const ctl = { failCommitAt: 0, commits: 0, corrupt: null };
+  const merge = (a, b) => ({ ...(a || {}), ...b });
+  const mod = {
+    getFirestore: () => ({}),
+    doc: (db, ...p) => ({ path: p.join('/'), id: p[p.length - 1] }),
+    collection: (db, ...p) => ({ path: p.join('/') }),
+    serverTimestamp: () => ({ __ts: true }),
+    getDocFromServer: async ref => { ops.push(['get', ref.path]); const d = docs.get(ref.path); return { exists: () => !!d, data: () => d && JSON.parse(JSON.stringify(d)) }; },
+    getDocsFromServer: async col => { ops.push(['list', col.path]); const list = [...docs.entries()].filter(([k]) => k.startsWith(col.path + '/') && !k.slice(col.path.length + 1).includes('/')); return { size: list.length, forEach: f => list.forEach(([k, v]) => f({ id: k.split('/').pop(), data: () => JSON.parse(JSON.stringify(v)) })) }; },
+    setDoc: async (ref, data, opt) => { ops.push(['setDoc', ref.path]); docs.set(ref.path, opt?.merge ? merge(docs.get(ref.path), data) : { ...data }); },
+    // トランザクション：読んでから書く。書き込みは最後にまとめて（途中で失敗すれば何も書かない）
+    runTransaction: async (db, fn) => {
+      ctl.tx = (ctl.tx || 0) + 1; const pend = [];
+      const t = { get: async ref => { ops.push(['txGet', ref.path]); const d = docs.get(ref.path); return { exists: () => !!d, data: () => d && JSON.parse(JSON.stringify(d)) }; }, set: (ref, data, opt) => { pend.push([ref.path, data, opt]); } };
+      const r = await fn(t);
+      if (ctl.beforeCommit) { const f = ctl.beforeCommit; ctl.beforeCommit = null; f(); }
+      if (ctl.failTxAt && ctl.tx === ctl.failTxAt) { const e = new Error('x'); e.code = 'unavailable'; throw e; }
+      for (const [k, v, opt] of pend) { ops.push(['txSet', k]); docs.set(k, opt?.merge ? { ...(docs.get(k) || {}), ...v } : { ...v }); }
+      return r;
+    },
+    writeBatch: () => { const pend = []; return { set: (ref, data) => pend.push([ref.path, data]), commit: async () => {
+      ctl.commits++; if (ctl.failCommitAt && ctl.commits === ctl.failCommitAt) { const e = new Error('x'); e.code = 'unavailable'; throw e; }
+      for (const [k, v] of pend) { ops.push(['batchSet', k]); docs.set(k, ctl.corrupt && k.endsWith(ctl.corrupt) ? { ...v, json: '{"broken":true}' } : { ...v }); }
+    } }; },
+  };
+  return { docs, ops, ctl, mod };
+}
+async function regEnv() {
+  const f = fakeFirebase(), cloud = memFirestore();
+  SyncAuth._setLoader(async () => f.mod); SyncCloud._setFirestoreLoader(async () => cloud.mod);
+  await SyncAuth.initAuth({ config: FAKE_CFG }); await SyncAuth.signIn({ env: {}, watchdogMs: 0 });
+  await delDB('factory-test23');
+  const d = await FactoryDB.open('factory-test23'); d.actor = 'テスト担当'; await loadMaster(d);
+  const seed = await loadInitialProjects(); await seedInitialProjects(d, seed);
+  // 大きいコードを書き換えて、1MBを超える変更履歴を作る（分割して送る記録）
+  const vh = (await d.all('projects')).find(p => p.seedKey === 'vintage-hunt');
+  const fl = await d.create('files', { projectId: vh.id, fileName: 'big.html', status: 'active', code: 'あ'.repeat(290000) });
+  await d.update('files', fl.id, { code: 'い'.repeat(290000) }, { reason: '書き換え' });
+  await d.upsert('settings', 'lastTestRun', { key: 'lastTestRun', value: { total: 1 } }, {});
+  return { d, cloud, seed, done: async () => { d.close(); await delDB('factory-test23'); SyncCloud._setFirestoreLoader(null); SyncAuth._setLoader(null); } };
+}
+
+test('【Sync-2-3】初回登録の仕組み：削除の命令を持たない・Factoryのデータベースに書き込まない', async () => {
+  const code = f => fetch(f, { cache: 'no-cache' }).then(r => r.text()).then(t => t.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
+  const reg = await code('../js/sync/register.js'), view = await code('../js/views/syncregister.js');
+  for (const [n, c] of [['register.js', reg], ['syncregister.js', view]]) {
+    assert(!/deleteDoc|\.delete\(|deleteField|clear\(\)/.test(c), `${n} に削除の命令がある`);
+    assert(!/\.(create|update|upsert|remove|purge|restore|importAll)\(/.test(c), `${n} がFactoryのデータを書き換える`);
+  }
+  assert(!/from ['"][^'"]*db\.js['"]/.test(reg), 'register.js が db.js を読み込んでいる');
+  eq([Reg.SYNC_DB !== 'factory', Reg.encodeId('__factory__'), Reg.encodeId('a/b c'), /^__.*__$/.test(Reg.encodeId('__x__'))], [true, 'r-__factory__', 'r-a~2f~b~20~c', false], 'ドキュメントIDの変換');
+  const parts = Reg.splitChunks('x'.repeat(600001), 250000);
+  eq([parts.length, parts.join('').length], [3, 600001], '分割と復元');
+});
+
+test('【Sync-2-3】初回登録：バックアップ → 送信 → 全件照合 → 登録済み（Factoryのデータは1件も変わらない）', async () => {
+  const E = await regEnv();
+  try {
+    const before = JSON.stringify((await E.d.exportAll()).data);
+    const exp = await E.d.exportAll();
+    const snap = await Reg.saveSnapshot(exp, { deviceKind: 'PC' });
+    eq(snap.ok, true, '端末内の控え（読み直しで確認）');
+    eq(JSON.parse((await Reg.getSnapshot(snap.id)).json).data.projects.length, 8, '控えに8プロジェクト');
+    const plan = await Reg.buildPlan(exp, { expectedProjects: [E.seed.factory.name, ...E.seed.projects.map(p => p.name)] });
+    assert(plan.total > 300 && plan.chunked >= 1, `送る件数 ${plan.total}・分割 ${plan.chunked}`);
+    assert(!plan.items.some(i => i.store === 'settings' && ['master', 'lastTestRun'].includes(i.id)), '端末ごとの設定を送ろうとしている');
+    eq(plan.projectNames, [E.seed.factory.name, ...E.seed.projects.map(p => p.name)], 'プロジェクト名');
+    const phases = [];
+    const r = await Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC（Edge）', appVersion: '0.8.4', schemaVersion: exp.schemaVersion, onProgress: ph => phases.push(ph) });
+    eq([r.checked, r.meta.state, r.meta.sourceDevice, r.meta.counts.projects], [plan.total, 'registered', 'PC（Edge）', 8], '登録済み');
+    assert(['check', 'upload', 'verify', 'done'].every(p => phases.includes(p)), '進み具合の表示');
+    // クラウドの中身：全件・内容の指紋・分割された記録の復元
+    const docs = [...E.cloud.docs.entries()].filter(([k]) => !k.includes('/meta/') && !k.includes('/chunks/'));
+    eq(docs.length, plan.total, 'クラウドの件数');
+    const big = plan.items.find(i => i.parts);
+    const joined = [...E.cloud.docs.entries()].filter(([k]) => k.includes('/chunks/') && k.includes(big.docId)).sort((a, b) => a[1].index - b[1].index).map(([, v]) => v.json).join('');
+    eq(await Reg.sha256(joined), big.hash, '分割した記録をつなぐと元どおり');
+    eq(E.cloud.ops.filter(o => /delete/i.test(o[0])).length, 0, '削除の命令');
+    const st = await Reg.getSyncState();
+    eq([st.status, Object.keys(st.hashes).length], ['complete', plan.total], '照合用の記録（別のデータベース）');
+    eq(JSON.stringify((await E.d.exportAll()).data), before, 'Factoryのデータが変わった');
+    // 登録済みのクラウドには、もう一度登録できない（どの端末からも）
+    for (const dev of ['dev-pc', 'dev-iphone']) {
+      const e = await rejects(Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: dev, deviceLabel: 'x' }), '登録済みなのに登録できた');
+      eq(e.code, 'not-allowed', '登録済みは断る');
+    }
+  } finally { await E.done(); }
+});
+
+test('【Sync-2-3】途中で失敗しても続きから送れる・照合が合わなければ「登録済み」にしない・別の端末の途中は引き継がない', async () => {
+  const E = await regEnv();
+  try {
+    const exp = await E.d.exportAll(); const snap = await Reg.saveSnapshot(exp); const plan = await Reg.buildPlan(exp);
+    // 2回目の送信で接続が切れる
+    E.cloud.ctl.failCommitAt = 2;
+    const e1 = await rejects(Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC' }), '途中失敗なのに成功した');
+    eq(e1.code, 'unavailable', '接続が切れた');
+    const m1 = await Reg.readMeta();
+    eq([m1.state, m1.raw.sourceDeviceId], ['uploading', 'dev-pc'], '「登録途中」のまま（ほかの端末は取り込まない）');
+    // 別の端末からは登録できない
+    eq(Reg.cloudAllows(m1, 'dev-iphone').ok, false, '別の端末は途中を引き継がない');
+    eq([Reg.cloudAllows(m1, 'dev-pc').ok, Reg.cloudAllows(m1, 'dev-pc').resume], [true, true], '同じ端末は続きから送れる');
+    // 照合が合わない（1件だけ壊れて保存される）→ 登録済みにしない
+    E.cloud.ctl.failCommitAt = 0;
+    const victim = plan.items.find(i => !i.parts && i.store === 'specs');
+    E.cloud.ctl.corrupt = victim.docId;
+    const e2 = await rejects(Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC' }), '壊れているのに登録済みになった');
+    eq([e2.code, e2.mismatches.length, (await Reg.readMeta()).state], ['verify-failed', 1, 'uploading'], '照合が合わなければ登録途中のまま');
+    // 直ったら、もう一度送って完了（同じ登録番号）
+    E.cloud.ctl.corrupt = null;
+    const r = await Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC' });
+    eq([r.meta.state, r.uploadId, r.checked], ['registered', m1.raw.uploadId, plan.total], '続きから送って完了');
+    // 未ログインでは送れない
+    await SyncAuth.signOut();
+    eq((await rejects(Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC' }), '未ログインで送れた')).code, 'unauthenticated', '未ログイン');
+  } finally { await E.done(); }
+});
+
+
+// ---------------- Phase Sync-2-4：この端末への取り込み（クラウド → 端末の一方向） ----------------
+// 「PC（初回正本）」から登録したクラウドを、少しだけデータのある「iPhone」へ取り込む
+async function pullEnv() {
+  const E = await regEnv();                       // PC役（8プロジェクト）＋にせクラウド
+  const exp = await E.d.exportAll();
+  const snap = await Reg.saveSnapshot(exp);
+  const plan = await Reg.buildPlan(exp);
+  await Reg.runRegistration({ plan, snapshotId: snap.id, deviceId: 'dev-pc', deviceLabel: 'PC（Edge）', schemaVersion: exp.schemaVersion });
+  await delDB('factory-test24');
+  const ip = await FactoryDB.open('factory-test24'); ip.actor = 'iPhone'; await loadMaster(ip);
+  // iPhoneの今のデータ：プロジェクト0件だが、変更履歴などが少しある・端末ごとの記録・この端末だけの記録
+  const tmp = await ip.create('ideas', { text: 'iPhoneで書いたメモ', status: 'new' }); await ip.remove('ideas', tmp.id);
+  await ip.upsert('settings', 'lastTestRun', { key: 'lastTestRun', value: { total: 61, passed: 61 } }, {});
+  await ip.create('ideas', { text: 'この端末だけの記録', status: 'new', localOnly: true });
+  const cloudBefore = JSON.stringify([...E.cloud.docs.entries()]);
+  const opsStart = E.cloud.ops.length;
+  return { ...E, ip, plan, cloudBefore, opsStart, done2: async () => { ip.close(); await delDB('factory-test24'); await E.done(); } };
+}
+
+test('【Sync-2-4】取り込みの仕組み：クラウドへ書き込む・削除する命令を持たない', async () => {
+  const code = f => fetch(f, { cache: 'no-cache' }).then(r => r.text()).then(t => t.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
+  for (const f of ['../js/sync/pull.js', '../js/views/syncimport.js']) {
+    const c = await code(f);
+    assert(!/setDoc|writeBatch|updateDoc|addDoc|deleteDoc|runTransaction|\.delete\(/.test(c), `${f} にクラウドへの書き込み・削除の命令がある`);
+    assert(!/\.(create|update|upsert|remove|purge|restore)\(/.test(c), `${f} がFactoryのデータを1件ずつ書き換える`);
+  }
+  assert(/importAll/.test(await code('../js/sync/pull.js')), '置き換えは「全部成功するか、何も変わらないか」の仕組みで行う');
+});
+
+test('【Sync-2-4】取り込み：内容の事前表示 → バックアップ → 取り込み → 全件照合（クラウドは変わらない・端末ごとの記録は残る）', async () => {
+  const E = await pullEnv();
+  try {
+    const cloud = await Pull.readCloudData();
+    eq([cloud.ok, cloud.total, cloud.counts.projects, cloud.fingerprint === E.plan.fingerprint, cloud.meta.sourceDevice], [true, E.plan.total, 8, true, 'PC（Edge）'], 'クラウドの内容（全件の指紋を確認）');
+    const before = await E.ip.exportAll();
+    const local = Pull.localSummary(before);
+    eq([local.isEmpty, local.projects.count, local.total > 0], [false, 0, true], 'iPhoneは空ではない（プロジェクト0件・変更履歴あり）');
+    const snap = await Pull.saveSnapshot(before, { deviceKind: 'iPhone' });
+    eq(snap.ok, true, '取り込み前の控え');
+    const phases = [];
+    const r = await Pull.runImport(E.ip, { snapshotId: snap.id, expectedFingerprint: cloud.fingerprint, onProgress: p => phases.push(p) });
+    eq([r.checked, r.total], [E.plan.total, E.plan.total], '全件照合');
+    assert(['read', 'write', 'verify', 'done'].every(p => phases.includes(p)), '進み具合');
+    const after = await E.ip.exportAll();
+    eq(after.data.projects.map(p => p.name).sort(), E.plan.projectNames.slice().sort(), '8プロジェクトがiPhoneに');
+    assert(after.data.settings.some(x => x.id === 'lastTestRun' && x.value.total === 61), '端末ごとの記録（自動テスト結果）は残る');
+    assert(after.data.ideas.some(x => x.localOnly && x.text === 'この端末だけの記録'), 'この端末だけの記録は残る');
+    assert(after.data.history.some(h => h.action === 'import' && h.reason.includes('クラウドから取り込み')), '取り込みの記録');
+    eq(JSON.stringify([...E.cloud.docs.entries()]), E.cloudBefore, 'クラウドのデータが変わった');
+    eq([...new Set(E.cloud.ops.slice(E.opsStart).map(o => o[0]))].sort(), ['get', 'list'], '取り込みでクラウドに使った命令は「読む」だけ');
+    const st = await Pull.getImportState();
+    eq([st.status, Object.keys(st.hashes).length], ['complete', E.plan.total], '照合用の記録（別のデータベース）');
+    // 取り込み後は、iPhoneのデータとクラウドが同じ（指紋が一致）
+    const fpAfter = await Dry.fingerprint(Dry.analyzeForSync({ data: Object.fromEntries(Object.entries(after.data).map(([s, rows]) => [s, rows.filter(x => !(s === 'history' && x.action === 'import') && !x.localOnly)])) }).targetsForFingerprint);
+    eq(fpAfter, cloud.fingerprint, '取り込み後の指紋');
+  } finally { await E.done2(); }
+});
+
+test('【Sync-2-4】照合が合わなければ取り込み前へ自動で戻す・クラウドの問題や端末の変化があれば取り込まない', async () => {
+  const E = await pullEnv();
+  try {
+    const cloud = await Pull.readCloudData();
+    const before = await E.ip.exportAll();
+    const beforeJson = JSON.stringify(before.data);
+    const snap = await Pull.saveSnapshot(before);
+    // 1) 書き込みで1件だけ欠ける → 照合が合わない → 取り込み前に戻る
+    const real = E.ip.importAll.bind(E.ip);
+    let calls = 0;
+    E.ip.importAll = async (json, o) => { calls++; if (calls === 1) { json = JSON.parse(JSON.stringify(json)); json.data.specs.pop(); json.counts.specs--; } return real(json, o); };
+    const e1 = await rejects(Pull.runImport(E.ip, { snapshotId: snap.id, expectedFingerprint: cloud.fingerprint }), '欠けているのに取り込み完了になった');
+    eq([e1.code, calls], ['verify-failed', 2], '照合が合わない → 取り込み前へ戻す');
+    const restored = await E.ip.exportAll();
+    eq(JSON.stringify(Object.fromEntries(Object.entries(restored.data).map(([s, r]) => [s, r.filter(x => !(s === 'history' && x.action === 'import'))]))), JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(beforeJson)).map(([s, r]) => [s, r.filter(x => !(s === 'history' && x.action === 'import'))]))), '取り込み前のデータに戻った');
+    E.ip.importAll = real;
+    // 2) クラウドの1件が壊れている → 取り込まない（端末は変えない）
+    const key = [...E.cloud.docs.keys()].find(k => k.includes('/specs/'));
+    const orig = E.cloud.docs.get(key);
+    E.cloud.docs.set(key, { ...orig, json: '{"x":1}' });
+    const bad = await Pull.readCloudData();
+    eq([bad.ok, bad.problems.length > 0], [false, true], 'クラウドの問題を見つける');
+    const snap2 = await Pull.saveSnapshot(await E.ip.exportAll());
+    const n0 = JSON.stringify((await E.ip.exportAll()).data);
+    eq((await rejects(Pull.runImport(E.ip, { snapshotId: snap2.id, expectedFingerprint: cloud.fingerprint }), '壊れたクラウドから取り込んだ')).code, 'cloud-problem', 'クラウドに問題があれば取り込まない');
+    eq(JSON.stringify((await E.ip.exportAll()).data), n0, '端末は変わらない');
+    E.cloud.docs.set(key, orig);
+    // 3) バックアップの後に端末のデータが変わった → 取り込まない
+    await E.ip.create('ideas', { text: '後から書いた', status: 'new' });
+    eq((await rejects(Pull.runImport(E.ip, { snapshotId: snap2.id, expectedFingerprint: cloud.fingerprint }), 'バックアップ後の変更があるのに取り込んだ')).code, 'local-changed', 'バックアップの後に変わったら取り込まない');
+    // 4) 確認画面のあとにクラウドが変わった（指紋が違う）→ 取り込まない
+    const snap3 = await Pull.saveSnapshot(await E.ip.exportAll());
+    eq((await rejects(Pull.runImport(E.ip, { snapshotId: snap3.id, expectedFingerprint: 'different' }), '内容が変わったのに取り込んだ')).code, 'cloud-changed', 'クラウドが変わったら取り込まない');
+    // 5) 登録前のクラウドからは取り込めない
+    E.cloud.docs.delete([...E.cloud.docs.keys()].find(k => k.endsWith('/meta/factory')));
+    eq((await rejects(Pull.readCloudData(), '未登録から取り込めた')).code, 'not-registered', '登録前は取り込めない');
+  } finally { await E.done2(); }
+});
+
+
+// ---------------- Phase Sync-3：PC・iPhoneの双方向同期（ボタンを押したときだけ・記録ごとの差分） ----------------
+test('【Sync-3】同期の仕組み：削除の命令を持たない・Factoryのデータは1件ずつ書き換えない', async () => {
+  const code = f => fetch(f, { cache: 'no-cache' }).then(r => r.text()).then(t => t.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
+  for (const f of ['../js/sync/sync3.js', '../js/views/sync3view.js']) {
+    const c = await code(f);
+    assert(!/deleteDoc|deleteField|writeBatch|\bt\.delete\(|fs\.delete/.test(c), `${f} に削除・一括上書きの命令がある`);
+    assert(!/\.(create|update|upsert|remove|purge|restore)\(/.test(c), `${f} がFactoryのデータを1件ずつ書き換える（rev・更新日時が変わってしまう）`);
+  }
+  eq([S3.SYNC3_STORES.includes('trash'), S3.SYNC3_STORES.includes('history'), S3.SYNC3_STORES.includes('specs')], [false, true, true], 'ゴミ箱は同期しない');
+});
+
+test('【Sync-3】差分の判定：未送信・受け取り待ち・競合・この端末で削除（3つを比べる）', async () => {
+  const m = obj => new Map(Object.entries(obj).map(([k, h]) => [k, { store: k.split('/')[0], id: k.split('/')[1], rec: { id: k.split('/')[1], v: h }, hash: h }]));
+  const base = { 'specs/a': 'A0', 'specs/b': 'B0', 'specs/c': 'C0', 'specs/d': 'D0', 'specs/e': 'E0', 'specs/f': 'F0', 'specs/g': 'G0' };
+  const local = m({ 'specs/a': 'A0', 'specs/b': 'B1', 'specs/c': 'C0', 'specs/d': 'D1', 'specs/e': 'E1', 'specs/n': 'N1', 'trash/t': 'T1' });   // f・g はこの端末で削除
+  const cloud = m({ 'specs/a': 'A0', 'specs/b': 'B0', 'specs/c': 'C2', 'specs/d': 'D2', 'specs/e': 'E1', 'specs/f': 'F0', 'specs/g': 'G2', 'specs/z': 'Z2' });
+  const d = S3.computeDiff({ local, base, cloud });
+  eq(d.push.map(x => `${x.id}:${x.kind}`), ['b:update', 'n:new'], '未送信（この端末だけ変わった・新しく作った）');
+  eq(d.pull.map(x => `${x.id}:${x.kind}`), ['c:update', 'z:new'], '受け取り待ち（クラウドだけ変わった・ほかの端末で作った）');
+  eq(d.conflicts.map(x => `${x.id}:${x.type}`), ['d:both', 'g:deletedLocal'], '競合（両方で違う内容・この端末で削除したがクラウドで変更）');
+  eq(d.same.map(x => x.key), ['specs/e'], '両方で同じ内容に変わった → 競合にしない');
+  eq(d.localDeleted.map(x => x.id), ['f'], 'この端末で削除（クラウドには反映しない）');
+  assert(!d.push.some(x => x.store === 'trash'), 'ゴミ箱は送らない');
+  // 基準のない端末：この端末だけの記録は「同期前からある記録」・送らないと決めたものは数えない
+  const f = S3.computeDiff({ local: m({ 'ideas/x': 'X1', 'ideas/y': 'Y1', 'ideas/w': 'W1' }), base: {}, cloud: m({ 'specs/a': 'A0' }), preexisting: { 'ideas/x': 'X1', 'ideas/y': 'Y1' }, ignored: { 'ideas/y': 'Y1' } });
+  eq([f.push.map(x => `${x.id}:${x.fresh}`), f.pull.map(x => x.id)], [['w:false', 'x:true'], ['a']], '基準のない端末（同期前からある記録・送らないと決めた記録・あとで作った記録）');
+  // 項目ごとの違い（rev・更新日時などは除く）
+  eq(S3.fieldDiff({ title: 'A', memo: 'm', rev: 2, updatedAt: '1' }, { title: 'B', memo: 'm', rev: 3, updatedAt: '2' }).map(x => x.field), ['title'], '変更内容');
+});
+
+// 2台（PC・iPhone）とにせクラウドで、送る → 受け取る → 競合 を確かめる
+async function twoDevices() {
+  const E = await pullEnv();                // PC（8プロジェクト・初回登録済み）・iPhone（プロジェクト0件・少しデータあり）
+  const pc = E.d, ip = E.ip;
+  return { E, pc, ip };
+}
+const edit = async (db, store, pick, patch, actor) => { const rows = await db.all(store); const r = rows.find(pick); db.actor = actor; return db.update(store, r.id, patch, { reason: 'テストの変更' }); };
+
+test('【Sync-3】PCで変更 → 送る → iPhoneで受け取る → iPhoneで変更 → 送る → PCで受け取る（変更分だけ・照合）', async () => {
+  const { E, pc, ip } = await twoDevices();
+  try {
+    // 同期を始める：PCは登録時の記録が基準、iPhoneは基準なし（クラウドの全件が受け取り待ち）
+    const sp = await S3.startSync3(pc, { deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    eq([sp.from, sp.fresh], ['register', false], 'PCの基準＝登録時の記録');
+    const metaAfterStart = (await Reg.readMeta()).raw;
+    eq([metaAfterStart.syncFormat, metaAfterStart.changeSeq, metaAfterStart.status, metaAfterStart.total], [3, 0, 'complete', E.plan.total], 'クラウドの印をSync-3形式に（データ本体はそのまま）');
+    const si = await S3.startSync3(ip, { deviceLabel: 'iPhone（ホーム画面版）', deviceId: 'dev-ip', baseSource: 'none' });
+    eq(si.fresh, true, 'iPhoneは基準なし');
+    let ci = await S3.checkSync3(ip);
+    eq([ci.diff.counts.pull > 300, ci.diff.counts.conflicts], [true, 0], 'iPhone：クラウドの全件が受け取り待ち・競合なし');
+    assert(ci.diff.push.length > 0 && ci.diff.push.every(p => p.fresh), 'iPhone：同期前からある記録は「同期前からある記録」');
+    // iPhoneで受け取る（この端末の記録は消さない）
+    const ipBeforeIdeas = (await ip.all('ideas')).length;
+    await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    eq([(await ip.all('projects')).length, (await ip.all('ideas')).length >= ipBeforeIdeas], [8, true], 'iPhoneに8プロジェクト（この端末の記録は残る）');
+    // 同期前からある記録は「この端末だけに残す」
+    ci = await S3.checkSync3(ip);
+    await S3.ignoreLocal(ip, ci.diff.push.filter(p => p.fresh));
+    ci = await S3.checkSync3(ip);
+    eq([ci.diff.counts.push, ci.diff.counts.pull, ci.diff.counts.conflicts], [0, 0, 0], 'iPhone：同期済み');
+    // PCで1件変更 → 送る
+    await edit(pc, 'projects', p => p.seedKey === 'vintage-hunt', { memo: 'PCで追記' }, 'PC先生');
+    let cp = await S3.checkSync3(pc);
+    eq(cp.diff.push.map(p => p.store).sort(), ['history', 'projects'], 'PC：未送信＝変更した記録と変更履歴の2件');
+    const cloudBefore = new Map(E.cloud.docs);
+    await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    const changed = [...E.cloud.docs.keys()].filter(k => JSON.stringify(E.cloud.docs.get(k)) !== JSON.stringify(cloudBefore.get(k)));
+    eq(changed.filter(k => !k.endsWith('/meta/factory')).length, 2, 'クラウドで変わったのは送った2件だけ（全件の上書きはしない）');
+    const meta1 = (await Reg.readMeta()).raw;
+    eq([meta1.changeSeq, meta1.lastUpdatedBy, meta1.total], [1, 'PC（Edge）', E.plan.total + 1], '印：変更番号・最終更新者・件数');
+    // 送った後も、取り込み（災害復旧用）でクラウド全体の照合が通る
+    eq((await Pull.readCloudData()).ok, true, '送った後もクラウド全体の指紋・件数が一致');
+    eq((await S3.checkSync3(pc)).diff.counts.push, 0, 'PC：送った後は未送信0件');
+    // iPhoneで受け取る
+    ci = await S3.checkSync3(ip);
+    eq(ci.diff.pull.map(p => `${p.store}:${p.kind}`).sort(), ['history:new', 'projects:update'], 'iPhone：受け取り待ち＝PCの変更2件');
+    await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    const vh = (await ip.all('projects')).find(p => p.seedKey === 'vintage-hunt');
+    eq([vh.memo, vh.updatedBy], ['PCで追記', 'PC先生'], 'iPhoneに反映（更新者・内容はPCのまま）');
+    // iPhoneで別の1件を変更 → 送る → PCで受け取る
+    await edit(ip, 'projects', p => p.seedKey === 'storm', { memo: 'iPhoneで追記' }, 'iPhone先生');
+    ci = await S3.checkSync3(ip);
+    await S3.pushChanges({ db: ip, items: ci.diff.push, check: ci, deviceLabel: 'iPhone（ホーム画面版）', deviceId: 'dev-ip' });
+    cp = await S3.checkSync3(pc);
+    eq([cp.diff.counts.pull, cp.diff.counts.conflicts], [2, 0], 'PC：受け取り待ち2件');
+    eq(cp.diff.pull.find(p => p.store === 'projects').deviceLabel, 'iPhone（ホーム画面版）', '送った端末の表示');
+    await S3.pullChanges({ db: pc, items: cp.diff.pull, check: cp, deviceLabel: 'PC' });
+    eq((await pc.all('projects')).find(p => p.seedKey === 'storm').memo, 'iPhoneで追記', 'PCに反映');
+    // 両方そろった：同じデータ
+    const fpOf = async db => (await S3.localMap(await db.exportAll()));
+    const [a, b] = [await fpOf(pc), await fpOf(ip)];
+    for (const k of ['projects', 'specs']) eq([...a].filter(([x]) => x.startsWith(k)).map(([x, v]) => x + v.hash).sort(), [...b].filter(([x]) => x.startsWith(k)).map(([x, v]) => x + v.hash).sort(), `${k} がPCとiPhoneで一致`);
+    eq(E.cloud.ops.filter(o => /delete/i.test(o[0])).length, 0, 'クラウドで削除していない');
+  } finally { await E.done2(); }
+});
+
+test('【Sync-3】競合：同じ記録を両方で変更 → 勝手に採用しない → この端末版／クラウド版／統合を選べる', async () => {
+  const { E, pc, ip } = await twoDevices();
+  try {
+    await S3.startSync3(pc, { deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    await S3.startSync3(ip, { deviceLabel: 'iPhone', deviceId: 'dev-ip', baseSource: 'none' });
+    let ci = await S3.checkSync3(ip); await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    const pick = p => p.seedKey === 'kaikei';
+    // 1) 両方で同じ記録を変更
+    await edit(pc, 'projects', pick, { memo: 'PC版のメモ', purpose: 'PC版の目的' }, 'PC先生');
+    await edit(ip, 'projects', pick, { memo: 'iPhone版のメモ' }, 'iPhone先生');
+    let cp = await S3.checkSync3(pc);
+    await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    ci = await S3.checkSync3(ip);
+    const conf = ci.diff.conflicts.find(c => c.store === 'projects');
+    assert(conf && conf.type === 'both', 'iPhone：競合を見つける');
+    assert(!ci.diff.push.some(p => p.key === conf.key) && !ci.diff.pull.some(p => p.key === conf.key), '競合の記録は自動で送ったり受け取ったりしない');
+    eq(S3.fieldDiff(conf.local.rec, conf.cloud.rec).map(f => f.field).sort(), ['memo', 'purpose'], '変更内容（項目ごと）');
+    eq(conf.cloud.deviceLabel, 'PC（Edge）', 'クラウド版を送った端末');
+    // 2) この端末版をそのまま送ろうとしても、競合の記録は送れない（クラウドが変わっているため）
+    const stale = { key: conf.key, store: conf.store, id: conf.id, rec: conf.local.rec, hash: conf.local.hash, cloudHash: conf.baseHash };
+    eq((await rejects(S3.pushChanges({ db: ip, items: [stale], check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip' }), '他端末の新しい変更を上書きした')).code, 'cloud-changed', 'ほかの端末の新しい変更は上書きしない');
+    // 3) 統合：memo は iPhone版、purpose は PC版
+    ci = await S3.checkSync3(ip);
+    const c2 = ci.diff.conflicts.find(c => c.key === conf.key);
+    await S3.resolveConflict({ db: ip, conflict: c2, choice: 'merge', picks: { memo: 'local', purpose: 'cloud' }, check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip', actor: 'iPhone先生' });
+    const merged = (await ip.all('projects')).find(pick);
+    eq([merged.memo, merged.purpose, merged.updatedBy], ['iPhone版のメモ', 'PC版の目的', 'iPhone先生'], '統合した内容');
+    cp = await S3.checkSync3(pc);
+    const pp = cp.diff.pull.find(p => p.key === conf.key);
+    assert(pp && cp.diff.conflicts.every(c => c.key !== conf.key), 'PC：統合した版が受け取り待ち（競合ではない）');
+    await S3.pullChanges({ db: pc, items: cp.diff.pull, check: cp, deviceLabel: 'PC' });
+    eq((await pc.all('projects')).find(pick).memo, 'iPhone版のメモ', 'PCにも統合した版');
+    // 4) クラウド版を採用
+    await edit(pc, 'projects', pick, { memo: 'PC2' }, 'PC先生');
+    ci = await S3.checkSync3(ip); await S3.pullChanges({ db: ip, items: [], check: ci }); // 何もしない
+    await edit(ip, 'projects', pick, { memo: 'iPhone2' }, 'iPhone先生');
+    cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    ci = await S3.checkSync3(ip);
+    let c3 = ci.diff.conflicts.find(c => c.key === conf.key);
+    await S3.resolveConflict({ db: ip, conflict: c3, choice: 'cloud', check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip' });
+    eq((await ip.all('projects')).find(pick).memo, 'PC2', 'クラウド版を採用');
+    // 5) この端末版を採用
+    await edit(pc, 'projects', pick, { memo: 'PC3' }, 'PC先生');
+    await edit(ip, 'projects', pick, { memo: 'iPhone3' }, 'iPhone先生');
+    cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    ci = await S3.checkSync3(ip);
+    c3 = ci.diff.conflicts.find(c => c.key === conf.key);
+    await S3.resolveConflict({ db: ip, conflict: c3, choice: 'local', check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip' });
+    cp = await S3.checkSync3(pc);
+    eq(cp.diff.pull.find(p => p.key === conf.key)?.rec.memo, 'iPhone3', 'この端末版を採用 → PCで受け取り待ち');
+  } finally { await E.done2(); }
+});
+
+test('【Sync-3】削除はクラウドへ反映しない・送る途中の失敗や同時の更新でもデータを壊さない', async () => {
+  const { E, pc, ip } = await twoDevices();
+  try {
+    await S3.startSync3(pc, { deviceLabel: 'PC', deviceId: 'dev-pc' });
+    await S3.startSync3(ip, { deviceLabel: 'iPhone', deviceId: 'dev-ip', baseSource: 'none' });
+    let ci = await S3.checkSync3(ip); await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    ci = await S3.checkSync3(ip); await S3.ignoreLocal(ip, ci.diff.push.filter(p => p.fresh));
+    // 1) PCで要望を削除（ゴミ箱へ）→ クラウドには反映しない
+    const req = await pc.create('requests', { projectId: (await pc.all('projects'))[0].id, title: '消す要望', status: 'unreviewed' });
+    let cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC', deviceId: 'dev-pc' });
+    await pc.remove('requests', req.id);
+    cp = await S3.checkSync3(pc);
+    eq([cp.diff.localDeleted.some(x => x.id === req.id), cp.diff.push.some(p => p.store === 'trash')], [true, false], 'この端末で削除 → 表示だけ（ゴミ箱も送らない）');
+    await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC', deviceId: 'dev-pc' });
+    assert([...E.cloud.docs.keys()].some(k => k.includes('/requests/') && E.cloud.docs.get(k).id === req.id), 'クラウドの要望は残っている');
+    // 2) 送る途中で接続が切れる → クラウドも基準も変わらない → もう一度で送れる
+    await edit(pc, 'projects', p => p.seedKey === 'health', { memo: 'PC：送信失敗のテスト' }, 'PC先生');
+    cp = await S3.checkSync3(pc);
+    const docsBefore = JSON.stringify([...E.cloud.docs.entries()]);
+    const stBefore = JSON.stringify((await S3.getSync3State(pc)).base);
+    E.cloud.ctl.failTxAt = (E.cloud.ctl.tx || 0) + 1;
+    eq((await rejects(S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC', deviceId: 'dev-pc' }), '途中で失敗したのに成功した')).code, 'unavailable', '接続が切れた');
+    eq([JSON.stringify([...E.cloud.docs.entries()]) === docsBefore, JSON.stringify((await S3.getSync3State(pc)).base) === stBefore], [true, true], 'クラウドも基準も変わらない');
+    E.cloud.ctl.failTxAt = 0;
+    cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC', deviceId: 'dev-pc' });
+    eq((await S3.checkSync3(pc)).diff.counts.push, 0, 'もう一度で送れた');
+    // 3) 確認と送信の間に、ほかの端末が送った → 送らない（上書きしない）
+    await edit(ip, 'projects', p => p.seedKey === 'family', { memo: 'iPhone：同時のテスト' }, 'iPhone先生');
+    ci = await S3.checkSync3(ip);
+    await edit(pc, 'projects', p => p.seedKey === 'kyozai', { memo: 'PC：先に送る' }, 'PC先生');
+    cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC', deviceId: 'dev-pc' });
+    eq((await rejects(S3.pushChanges({ db: ip, items: ci.diff.push, check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip' }), '古い確認のまま送れた')).code, 'cloud-changed', '確認のあとにほかの端末が送ったら送らない');
+    ci = await S3.checkSync3(ip);
+    eq([ci.diff.pull.some(p => p.store === 'projects' && p.rec.memo === 'PC：先に送る'), ci.diff.push.map(p => p.store).sort().join(), ci.diff.counts.conflicts], [true, 'history,projects', 0], '確認し直すと：PCの変更が受け取り待ち・iPhoneの変更2件が未送信・競合なし');
+    await S3.pushChanges({ db: ip, items: ci.diff.push, check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip' });
+    // 4) 受け取りで照合が合わない → 受け取り前の控えへ戻す
+    ci = await S3.checkSync3(ip);
+    cp = await S3.checkSync3(pc);
+    const realApply = pc.applySyncedRecords.bind(pc);
+    pc.applySyncedRecords = async items => realApply(items.map(x => x.store === 'projects' ? { ...x, rec: { ...x.rec, memo: '壊れた' } } : x));
+    const pcBefore = JSON.stringify((await pc.exportAll()).data.projects);
+    eq((await rejects(S3.pullChanges({ db: pc, items: cp.diff.pull, check: cp, deviceLabel: 'PC' }), '壊れたまま受け取り完了になった')).code, 'verify-failed', '照合が合わない');
+    eq(JSON.stringify((await pc.exportAll()).data.projects), pcBefore, '受け取り前のデータに戻った');
+    pc.applySyncedRecords = realApply;
+    // 5) 確認のあとにこの端末で同じ記録が変わった → 受け取らない
+    cp = await S3.checkSync3(pc);
+    const target = cp.diff.pull.find(p => p.store === 'projects');
+    await pc.applySyncedRecords([{ store: 'projects', rec: { ...(await pc.get('projects', target.id)), memo: 'PC：確認の後に変更' } }]);
+    eq((await rejects(S3.pullChanges({ db: pc, items: cp.diff.pull, check: cp, deviceLabel: 'PC' }), '確認後の変更を上書きした')).code, 'local-changed', 'この端末の新しい変更を上書きしない');
+    // 端末ごとの記録は送らない
+    assert(![...E.cloud.docs.keys()].some(k => /\/settings\/r-(lastTestRun|master|lastBackup)$/.test(k)), '端末ごとの記録をクラウドへ送っていない');
+  } finally { await E.done2(); }
 });
 
 // ---------------- 実行 ----------------
