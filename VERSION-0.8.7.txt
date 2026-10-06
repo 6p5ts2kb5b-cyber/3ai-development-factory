@@ -1,0 +1,5 @@
+3AI Development Factory v0.8.7
+- Sync-2-4 iPhone snapshot fallback
+- If IndexedDB snapshot storage fails, use localStorage fallback and verify by reading it back
+- APP_VERSION 0.8.7
+- Service Worker factory-v15
