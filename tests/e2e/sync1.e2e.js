@@ -49,6 +49,8 @@ async function scenario(label, ctxOpts) {
     const js = body => ({ status: 200, headers: { 'content-type': 'application/javascript', 'access-control-allow-origin': '*' }, body });
     await ctx.route(SDK + 'firebase-app.js', r => r.fulfill(js(FAKE_APP)));
     await ctx.route(SDK + 'firebase-auth.js', r => r.fulfill(js(FAKE_AUTH)));
+    // ログイン中にGoogleログイン画面を開くと、クラウドの状態を自動で1回読む（にせFirestore：空）
+    await ctx.route(SDK + 'firebase-firestore.js', r => r.fulfill(js('export const getFirestore = () => ({}); export const doc = (d, ...p) => ({ path: p.join("/") }); export const getDocFromServer = async () => ({ exists: () => false, data: () => undefined });')));
   };
 
   // 1. 学校Surfaceと同じ状態（Factory＋7件）を作る
@@ -61,10 +63,10 @@ async function scenario(label, ctxOpts) {
   // 2. Firebase未設定の場合（設定ファイルが空のとき）
   await ctx.route('**/config/firebase.json', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ config: null }) }));
   await page.goto(BASE + '#/settings'); await page.waitForSelector('a[href="#/account"]');
-  check(L('設定画面に「Googleログイン・同期」'), await waitText(page, '#view', 'Googleログイン・同期', 'データの同期はまだ行いません'));
+  check(L('設定画面に「Googleログイン・同期」'), await waitText(page, '#view', 'Googleログイン・同期', '自動の同期はまだです'));
   await page.click('a[href="#/account"]');
   check(L('未設定なら「Firebaseの設定待ち」と表示（読み込みもしない）'), await waitText(page, '#acc-card', 'Firebaseの設定待ち') && external.length === 0);
-  check(L('「データは送受信しない」と明示'), await waitText(page, '#acc-note', 'クラウドへ送ったり、受け取ったりしません'));
+  check(L('「送る・反映するのは確認してボタンを押したときだけ・削除は反映しない」と明示'), await waitText(page, '#acc-note', 'クラウドへ送る・この端末へ反映するのは、件数と内容を確認してボタンを押したときだけ', '削除はクラウドへ反映しません'));
 
   // 3. 配布する設定ファイル（本物の接続情報）を確認
   const real = JSON.parse(fs.readFileSync(require('path').join(__dirname, '../../config/firebase.json'), 'utf8')).config;
@@ -86,7 +88,7 @@ async function scenario(label, ctxOpts) {
 
   // 5. Factoryのデータは1件も変わらない・Firestoreへ接続しない
   check(L('ログインしてもFactoryのデータ（8プロジェクト等）は1件も変わらない'), (await snapshot()) === before);
-  check(L('Firestore・Googleの他のサーバーへ接続しない'), external.every(h => h.startsWith('www.gstatic.com/firebasejs/12.8.0/firebase-')), [...new Set(external)].join(','));
+  check(L('Googleの配布元（gstatic）以外へ接続しない'), external.every(h => h.startsWith('www.gstatic.com/firebasejs/12.8.0/firebase-')), [...new Set(external)].join(','));
 
   // 6. ログアウト
   await page.click('#acc-out');

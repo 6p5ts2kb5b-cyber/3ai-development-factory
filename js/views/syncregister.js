@@ -55,7 +55,13 @@ export async function syncRegisterView(ctx, view, { appVersion = '' } = {}) {
         <button class="btn" id="rg-backup"${st.busy || !(c && c.every(x => x.ok)) ? ' disabled' : ''}>${st.snapshot ? 'バックアップを作り直す' : 'バックアップを作成する'}</button>
         ${st.fileSaved ? `<label class="check big-check"><input type="checkbox" id="rg-file-ok"${st.fileConfirmed ? ' checked' : ''}><span>バックアップファイルが保存されたことを確認しました</span></label>` : ''}
       </section>` : ''}
-      ${A ? `<section class="card" id="rg-step4">
+      ${st.cloudState === 'registered' ? `<section class="card" id="rg-registered">
+        <h2>登録済みです</h2>
+        <p><span class="badge ok">登録済み</span> 登録元：${esc(st.cloudSource || '不明')}</p>
+        <p>クラウドにはすでにFactoryのデータが登録されています。初回登録はもう一度はできません。この端末でクラウドのデータを使う場合は、取り込みを使ってください。</p>
+        <a class="btn primary" href="#/sync-import">この端末へ取り込む</a>
+      </section>` : ''}
+      ${A && st.cloudState !== 'registered' ? `<section class="card" id="rg-step4">
         <h2>4. 初回正本の決定と登録</h2>
         <label class="check big-check"><input type="checkbox" id="rg-primary"${st.primary ? ' checked' : ''}${c && c.every(x => x.ok) ? '' : ' disabled'}><span>この端末（${esc(device)}）を初回正本にする</span></label>
         <p class="muted">チェックすると、この端末のデータ（上の${A.total}件）がクラウドの最初のデータになります。Sync-3が完成するまでは、この端末だけで編集してください。</p>
@@ -80,16 +86,19 @@ export async function syncRegisterView(ctx, view, { appVersion = '' } = {}) {
     checks.push({ key: 'owner', label: 'クラウドを使う許可がある（owner）', ok: owner, detail: owner ? '許可されています' : cloud.error ? `${cloud.error.title}：${cloud.error.how}` : 'ログインしてから確認します' });
     let allow = { ok: false, reason: '' };
     if (owner) allow = cloudAllows(cloud.state === 'uploading' ? { ...cloud, raw: { sourceDeviceId: cloud.raw?.sourceDeviceId } } : cloud, ctx.db.device);
+    // 続きから送れるか（同じ端末の「登録途中」）
     if (owner && cloud.state === 'uploading') { try { const m = await readMeta(); allow = cloudAllows(m, ctx.db.device); } catch { allow = { ok: false, reason: '確認できませんでした' }; } }
     st.resume = allow.ok && allow.resume ? allow : null;
+    st.cloudState = cloud.state; st.cloudSource = cloud.sourceDevice || '';
     checks.push({ key: 'cloud', label: 'クラウドがまだ空である', ok: owner && allow.ok, detail: !owner ? '許可を確認してから確かめます' : cloud.state === 'empty' ? 'まだ何も登録されていません' : st.resume ? 'この端末からの登録が途中です（続きから送れます）' : allow.reason });
-    const exp = await ctx.db.exportAll();
+    const exp = await ctx.db.exportAll(); // 読むだけ
     const expected = await expectedNames();
     const A = analyzeForSync(exp, { master: null, expectedProjects: expected, checkBackup: j => FactoryDB.checkBackup(j) });
     const eightOk = A.projects.count > 0 && expected.length > 0 && !A.projects.missing.length && !A.projects.dupNames.length;
     checks.push({ key: 'projects', label: 'この端末にPhase 7の8プロジェクトがそろっている', ok: eightOk, detail: eightOk ? `${A.projects.count}件（重複なし）` : A.projects.missing.length ? `見つからないもの：${A.projects.missing.join('、')}` : A.projects.dupNames.length ? `同じ名前があります：${A.projects.dupNames.join('、')}` : 'プロジェクトがありません' });
     checks.push({ key: 'backupable', label: 'バックアップを作成できる', ok: A.backup.ok, detail: A.backup.ok ? `作成できます（${mb(A.backup.bytes)}）` : A.backup.reason });
     st.checks = checks; st.exp = exp; st.analysis = A; st.expected = expected; st.plan = await buildPlan(exp, { expectedProjects: expected });
+    // 中身が変わったら、バックアップは作り直し
     if (st.snapshot && st.snapshot.fingerprint !== st.plan.fingerprint) { st.snapshot = null; st.fileSaved = false; st.fileConfirmed = false; }
     st.busy = false; render();
   };
@@ -97,7 +106,9 @@ export async function syncRegisterView(ctx, view, { appVersion = '' } = {}) {
   const makeBackup = async () => {
     st.busy = true; render();
     try {
+      // 端末内の控え（Factoryとは別のデータベース。読み直して確認）
       st.snapshot = await saveSnapshot(st.exp, { deviceKind: device });
+      // バックアップファイル（Factoryのデータは変更しない）
       st.fileName = presyncFileName();
       downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
       st.fileSaved = true; st.fileConfirmed = false;
@@ -116,6 +127,7 @@ export async function syncRegisterView(ctx, view, { appVersion = '' } = {}) {
     const guard = e => { e.preventDefault(); e.returnValue = ''; };
     addEventListener('beforeunload', guard);
     try {
+      // 送るのは、直前に作った端末内の控えの中身（バックアップと同じもの）
       const snap = await getSnapshot(st.snapshot.id);
       const exp = JSON.parse(snap.json);
       const plan = await buildPlan(exp, { expectedProjects: st.expected });

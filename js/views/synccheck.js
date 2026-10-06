@@ -9,6 +9,7 @@ const mb = n => `${(n / 1024 / 1024).toFixed(2)}MB`;
 const kb = n => `${Math.round(n / 1024)}KB`;
 const when = iso => { try { return iso ? new Date(iso).toLocaleString('ja-JP') : 'なし'; } catch { return iso; } };
 
+// Phase 7 の正式登録（Factory本体＋7件）の名前。読み込めなければ照合を省く
 async function expectedNames() {
   try { const d = await loadInitialProjects(); return [d.factory?.name, ...d.projects.map(p => p.name)].filter(Boolean); } catch { return []; }
 }
@@ -28,7 +29,7 @@ export async function syncCheckView(ctx, view) {
     const btn = view.querySelector('#sc-run');
     btn.disabled = true; btn.textContent = '確認しています…';
     try {
-      const exp = await ctx.db.exportAll();
+      const exp = await ctx.db.exportAll(); // 読むだけ
       const expected = await expectedNames();
       const r = analyzeForSync(exp, { master: ctx.master, expectedProjects: expected, checkBackup: json => FactoryDB.checkBackup(json) });
       const fp = await fingerprint(r.targetsForFingerprint);
