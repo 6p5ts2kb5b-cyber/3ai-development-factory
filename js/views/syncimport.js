@@ -73,9 +73,10 @@ export async function syncImportView(ctx, view) {
           <li class="${st.snapshot?.ok ? 'ok' : 'ng'}"><span class="mark">${st.snapshot?.ok ? '✅' : '⬜'}</span><div><strong>端末内の控え</strong><div class="muted">${st.snapshot ? (st.snapshot.ok ? `作成して読み直しを確認しました（${esc(when(st.snapshot.at))}・${mb(st.snapshot.bytes)}）` : '作成できませんでした') : 'まだ作っていません'}</div></div></li>
           <li class="${st.fileSaved ? 'ok' : 'ng'}"><span class="mark">${st.fileSaved ? '✅' : '⬜'}</span><div><strong>バックアップファイル</strong><div class="muted">${st.fileSaved ? `「${esc(st.fileName)}」を保存しました（ダウンロードを確認してください）` : 'まだ保存していません'}</div></div></li>
         </ul>
-        <button class="btn" id="im-backup-btn"${st.busy || !checksOk || !st.cloud?.ok ? ' disabled' : ''}>${st.snapshot ? 'バックアップを作り直す' : 'この端末のデータをバックアップする'}</button>
+        <button class="btn" id="im-backup-btn"${st.busy || !checksOk || !st.cloud?.ok ? ' disabled' : ''}>${st.snapshot?.ok ? '端末内の控えを作り直す' : '① 端末内の控えを作る'}</button>
+        ${st.snapshot?.ok ? `<button class="btn" id="im-save-file"${st.busy ? ' disabled' : ''}>② バックアップファイルを保存する</button>` : ''}
         ${st.fileSaved ? `<label class="check big-check"><input type="checkbox" id="im-file-ok"${st.fileConfirmed ? ' checked' : ''}><span>現在のこの端末のデータをバックアップしました</span></label>` : ''}
-        <p class="muted">取り込んだ後に元に戻したいときは、このバックアップファイルを「バックアップ」画面の「バックアップから復元」で使えます。</p>
+        <p class="muted">iPhoneでは、①の端末内の控えを作ってから、②のファイル保存を行います。ファイル表示から戻っても①の状態は残ります。取り込んだ後に元に戻したいときは、このバックアップファイルを「バックアップ」画面の「バックアップから復元」で使えます。</p>
       </section>` : ''}
       ${Lc && !st.same ? `<section class="card" id="im-go-card">
         <h2>5. 取り込み</h2>
@@ -132,13 +133,27 @@ export async function syncImportView(ctx, view) {
     st.busy = true; render();
     try {
       st.snapshot = await saveSnapshot(st.exp, { deviceKind: device });
+      if (!st.snapshot?.ok) throw new Error('端末内の控えを読み直して確認できませんでした');
+      st.snapshotId = st.snapshot.id;
+      st.fileSaved = false; st.fileConfirmed = false;
       st.fileName = preimportFileName();
-      downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
-      st.fileSaved = true; st.fileConfirmed = false; st.snapshotId = st.snapshot.id;
-      saveWizard({ snapshotId: st.snapshot.id, fileSaved: true, fileName: st.fileName, fileConfirmed: false });
-      toast('この端末のデータをバックアップしました');
-    } catch (e) { st.snapshot = { ok: false }; st.error = { title: 'バックアップを作成できませんでした', how: `${e?.message || e}（この端末のデータは変えていません）` }; }
+      saveWizard({ snapshotId: st.snapshot.id, fileSaved: false, fileName: st.fileName, fileConfirmed: false });
+      toast('端末内の控えを作成しました。次にバックアップファイルを保存してください');
+    } catch (e) {
+      st.snapshot = { ok: false }; st.snapshotId = null; st.fileSaved = false; st.fileConfirmed = false;
+      saveWizard({ snapshotId: null, fileSaved: false, fileName: '', fileConfirmed: false });
+      st.error = { title: '端末内の控えを作成できませんでした', how: `${e?.message || e}（この端末のデータは変えていません）` };
+    }
     st.busy = false; render();
+  };
+
+  const saveBackupFile = () => {
+    if (!st.snapshot?.ok || !st.exp) return;
+    st.fileName = st.fileName || preimportFileName();
+    // iPhoneではファイル表示へ移る前に状態を保存する。戻ってきても①の控えを失わない。
+    st.fileSaved = true; st.fileConfirmed = false;
+    saveWizard({ snapshotId: st.snapshot.id, fileSaved: true, fileName: st.fileName, fileConfirmed: false });
+    downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
   };
 
   const doImport = async () => {
@@ -166,6 +181,7 @@ export async function syncImportView(ctx, view) {
     q('#im-check') && (q('#im-check').onclick = runChecks);
     q('#im-next-backup') && (q('#im-next-backup').onclick = () => body.querySelector('#im-backup')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     q('#im-backup-btn') && (q('#im-backup-btn').onclick = makeBackup);
+    q('#im-save-file') && (q('#im-save-file').onclick = saveBackupFile);
     q('#im-file-ok') && (q('#im-file-ok').onchange = e => { st.fileConfirmed = e.target.checked; saveWizard({ snapshotId: st.snapshot?.id || st.snapshotId || null, fileSaved: st.fileSaved, fileName: st.fileName || '', fileConfirmed: st.fileConfirmed }); render(); });
     q('#im-switch') && (q('#im-switch').onchange = e => { st.switchOk = e.target.checked; render(); });
     q('#im-go') && (q('#im-go').onclick = doImport);
