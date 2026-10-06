@@ -28,11 +28,14 @@ export function canonical(v) {
   if (v && typeof v === 'object') return `{${Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`;
   return JSON.stringify(v ?? null);
 }
+// 日時だけの値（例：2026-10-05T01:23:45.678Z、2026-10-05）は個人情報の判定に使わない
+const DATETIME_ONLY = /^\s*(?:19|20)\d{2}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\s*$/;
 function walkStrings(obj, path, out, depth = 0) {
   if (depth > 6 || obj == null) return;
-  if (typeof obj === 'string') { if (obj.length >= 2) out.push([path, obj]); return; }
+  if (typeof obj === 'string') { if (obj.length >= 2 && !DATETIME_ONLY.test(obj)) out.push([path, obj]); return; }
   if (Array.isArray(obj)) { obj.forEach((v, i) => walkStrings(v, path, out, depth + 1)); return; }
-  if (typeof obj === 'object') for (const [k, v] of Object.entries(obj)) if (!SKIP_KEYS.has(k)) walkStrings(v, path ? `${path}.${k}` : k, out, depth + 1);
+  // 「〜At」（作成日時・更新日時・確定日時など）の項目は日時なので見ない
+  if (typeof obj === 'object') for (const [k, v] of Object.entries(obj)) if (!SKIP_KEYS.has(k) && !/At$/.test(k)) walkStrings(v, path ? `${path}.${k}` : k, out, depth + 1);
 }
 export function analyzeForSync(exp, { master = null, expectedProjects = [], checkBackup = null } = {}) {
   const data = exp?.data || {};
