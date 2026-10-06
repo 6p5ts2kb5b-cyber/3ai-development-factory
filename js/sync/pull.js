@@ -10,6 +10,16 @@ import { isSyncTarget, analyzeForSync, fingerprint, SYNC_TARGET_STORES } from '.
 import { sha256, saveSnapshot, getSnapshot } from './register.js';
 
 const SYNC_DB = 'factory-sync';
+const IMPORT_SNAPSHOT_PREFIX = 'factory-import-snapshot:';
+function getImportSnapshotFallback(id) {
+  try { const s = localStorage.getItem(IMPORT_SNAPSHOT_PREFIX + id); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+export function saveImportSnapshotFallback(rec) {
+  localStorage.setItem(IMPORT_SNAPSHOT_PREFIX + rec.id, JSON.stringify(rec));
+}
+export function clearImportSnapshotFallback(id) {
+  try { localStorage.removeItem(IMPORT_SNAPSHOT_PREFIX + id); } catch {}
+}
 const uidOrThrow = () => { const u = currentUid(); if (!u) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' }); return u; };
 
 export async function readCloudData() {
@@ -106,7 +116,8 @@ export async function getImportState() {
 
 export async function runImport(db, { snapshotId, expectedFingerprint, onProgress = () => {} }) {
   uidOrThrow();
-  const snap = await getSnapshot(snapshotId);
+  let snap = await getSnapshot(snapshotId);
+  if (!snap) snap = getImportSnapshotFallback(snapshotId);
   if (!snap) throw Object.assign(new Error('取り込み前のバックアップ（端末内の控え）が見つかりません。バックアップからやり直してください'), { code: 'no-backup' });
   onProgress('read');
   const cloud = await readCloudData();
