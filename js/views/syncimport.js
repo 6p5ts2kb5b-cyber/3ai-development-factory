@@ -5,7 +5,7 @@ import { initAuth, authState, deviceKind } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 import { loadInitialProjects } from '../seed.js';
 import { analyzeForSync, fingerprint, STORE_LABELS_JA } from '../sync/dryrun.js';
-import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot } from '../sync/pull.js';
+import { readCloudData, localSummary, runImport, importErrorMessage, saveSnapshot, saveImportSnapshotFallback } from '../sync/pull.js';
 import { getSnapshot } from '../sync/register.js';
 import { loadMaster } from '../master.js';
 
@@ -135,6 +135,8 @@ export async function syncImportView(ctx, view) {
       st.snapshot = await saveSnapshot(st.exp, { deviceKind: device });
       if (!st.snapshot?.ok) throw new Error('端末内の控えを読み直して確認できませんでした');
       st.snapshotId = st.snapshot.id;
+      // iPhoneのファイル表示でIndexedDB側が失われても戻せるよう、取り込み専用の控えを別保存する。
+      saveImportSnapshotFallback({ ...st.snapshot, json: JSON.stringify(st.exp) });
       st.fileSaved = false; st.fileConfirmed = false;
       st.fileName = preimportFileName();
       saveWizard({ snapshotId: st.snapshot.id, fileSaved: false, fileName: st.fileName, fileConfirmed: false });
