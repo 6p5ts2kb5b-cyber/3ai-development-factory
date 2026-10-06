@@ -97,5 +97,6 @@ export function resultHtml(r, { fp, checkedAt }) {
         <ul class="list privacy-list">${r.privacy.slice(0, 30).map(p => `<li><div><strong>${esc(p.kind)}</strong>：「${esc(p.text)}」 <span class="muted">${p.count}か所</span></div><div class="muted">${p.places.map(pl => `${esc(STORE_LABELS_JA[pl.store] || pl.store)}「${esc(pl.label)}」`).join('、')}</div></li>`).join('')}</ul>
         ${r.privacy.length > 30 ? `<p class="muted">ほか${r.privacy.length - 30}種類</p>` : ''}` : ''}
     </section>
-    <p class="muted">この確認では、クラウドへの送信も、この端末のデータの変更もしていません。</p>`;
+    <p class="muted">この確認では、クラウドへの送信も、この端末のデータの変更もしていません。</p>
+    ${!r.blocking && P.expected && !P.missing.length && !P.dupNames.length ? '<section class="card"><p>この端末にはPhase 7の8プロジェクトがそろっています。この端末を初回正本にする場合は、次へ進んでください。</p><a class="btn primary" href="#/sync-register">初回正本登録へ進む</a></section>' : ''}`;
 }
