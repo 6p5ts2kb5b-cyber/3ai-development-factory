@@ -1,0 +1,9 @@
+3AI Development Factory v0.10.1
+Sync-4a 実機確認で見つかった「ホームのお知らせが表示されない」問題を修正。
+原因：お知らせ表示関数は画面切替側から呼ばれていたが、app.js に表示部品の import と起動時のライフサイクル接続が不足していた。
+修正：
+- js/views/noticebar.js の fillNotice を app.js から読み込む
+- 起動後に半自動のお知らせを開始
+- オンライン復帰・画面復帰・同期操作後に表示を更新
+- 自動送信・自動受信は行わない
+- Service Worker: factory-v21
