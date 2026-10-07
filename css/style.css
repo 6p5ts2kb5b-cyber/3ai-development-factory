@@ -1,5 +1,5 @@
-/* Design-1 v0.11.0 — 「工房の工程票」
-   元の単一CSSを、GitHub反映時の安全性のため7つの同等パートに分割して読み込みます。
+/* Design-1 v0.11.1 — 「工房の工程票」
+   元の単一CSSを、GitHub反映時の安全性のため7つの同等パートに分割して読み込みます。v0.11.1のスマホ仕上げは design1-07.css の末尾で上書きします。
    見た目・適用順はClaudeの factory-v0.11.0/css/style.css と同じです。
 */
 @import url("./design1-01.css");
