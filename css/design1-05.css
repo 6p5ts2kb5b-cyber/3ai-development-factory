@@ -1,0 +1,77 @@
+.row-btn { appearance: none; border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 44px; }
+.t-title { font-weight: 700; word-break: break-word; }
+.t-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .8rem; color: var(--ink-2); align-items: center; }
+.t-res { font-size: .85rem; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 6px 8px; }
+.tick { flex: none; width: 30px; height: 30px; margin-top: 6px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); color: var(--accent-ink); font-weight: 900; cursor: pointer; }
+.task.st-done .tick { background: var(--ok); border-color: var(--ok); }
+.task.st-done .t-title { text-decoration: line-through; color: var(--ink-2); }
+.task.st-doing .tick { border-color: var(--signal); box-shadow: inset 0 0 0 3px var(--signal); }
+.inline-add { flex-wrap: nowrap; }
+
+/* ===================== Phase 4 追加 ===================== */
+.spec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.spec-head h2 { margin: 0; }
+.draft-card { border: 2px dashed var(--warn); }
+.viewing .kv { margin-bottom: 12px; }
+.spec-body { background: var(--surface-2); border-radius: 10px; padding: 12px; font-size: .92rem; max-height: 60vh; overflow: auto; }
+.versions li.current { background: var(--surface-2); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.versions a { text-decoration: none; color: inherit; display: flex; flex-direction: column; }
+textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Yu Gothic", monospace; font-size: 16px; line-height: 1.5; }
+
+/* 差分 */
+.sum-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.sum-chips .chip { cursor: default; }
+.chip.add { background: #e3f4e8; color: #1f6b3c; border-color: #b9dfc5; }
+.chip.del { background: #fbe5e3; color: #a3261e; border-color: #f0bdb8; }
+.chip.chg { background: #fdf0d5; color: #7a5200; border-color: #f0d9a4; }
+.diff { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: .9rem; }
+.d-row { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.d-head { background: var(--surface-2); font-weight: 800; border-top: 0; }
+.d-head > div { padding: 6px 10px; }
+.d-cell { padding: 6px 10px; white-space: pre-wrap; word-break: break-word; min-height: 1.6em; }
+.d-cell.empty { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--surface-2) 6px 8px); }
+.d-tag { grid-column: 1 / -1; font-size: .72rem; font-weight: 800; padding: 3px 10px 0; }
+.d-add .after, .d-add .d-tag { background: #e3f4e8; color: #1f6b3c; }
+.d-del .before, .d-del .d-tag { background: #fbe5e3; color: #a3261e; }
+.d-del .before .d-tx { text-decoration: line-through; }
+.d-change .before { background: #fbe5e3; color: #7d1d17; }
+.d-change .after { background: #e3f4e8; color: #1f5c35; }
+.d-change .d-tag { background: #fdf0d5; color: #7a5200; }
+.d-same .d-cell { color: var(--ink-2); }
+.d-gap { text-align: center; color: var(--ink-2); font-size: .8rem; padding: 6px; border-top: 1px solid var(--line); background: var(--surface-2); }
+@media (max-width: 719px) {
+  .d-row { grid-template-columns: 1fr; }
+  .d-head { display: none; }
+  .d-row:not(.d-same) .d-cell.before::before { content: "変更前："; font-weight: 800; font-size: .75rem; }
+  .d-row:not(.d-same) .d-cell.after::before { content: "変更後："; font-weight: 800; font-size: .75rem; }
+  .d-same .d-cell.after, .d-cell.empty { display: none; }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .d-add .after, :root:not([data-theme="light"]) .d-change .after, :root:not([data-theme="light"]) .chip.add { background: #1d3226; color: #9be0b3; }
+  :root:not([data-theme="light"]) .d-del .before, :root:not([data-theme="light"]) .d-change .before, :root:not([data-theme="light"]) .chip.del { background: #3a1f1d; color: #ffb4ab; }
+  :root:not([data-theme="light"]) .d-change .d-tag, :root:not([data-theme="light"]) .chip.chg { background: #3a2f17; color: #f2c26b; }
+}
+
+/* 要望の判断・選択・反映 */
+.reqs li { align-items: flex-start; flex-wrap: nowrap; }
+.reqs .grow { min-width: 0; }
+.pick { flex: none; display: flex; align-items: center; justify-content: center; width: 32px; min-height: 44px; }
+.pick input { width: 22px; height: 22px; accent-color: var(--ink); }
+.decision { font-size: .82rem; color: var(--ink-2); background: var(--surface-2); border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+.hint { background: var(--warn-bg); color: var(--ink); border-radius: 8px; padding: 8px 10px; font-size: .9rem; }
+.reflect-bar { position: sticky; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 12; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--ink); color: var(--bg); border-radius: 14px; padding: 8px 8px 8px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.2); margin-top: 8px; }
+.reflect-bar .btn { width: auto; }
+.reflect-bar[hidden] { display: none; }
+@media (min-width: 960px) { .reflect-bar { bottom: 16px; } }
+.timeline li.fix::before { background: var(--ok); }
+
+/* 通知は画面上部に（下部の操作バーやボタンと重ならないように）— Phase 4 */
+.toast { bottom: auto; top: calc(64px + env(safe-area-inset-top)); }
+.reflect-bar .btn { white-space: nowrap; font-size: .92rem; padding: 8px 12px; }
+
+/* ===================== Phase 5 追加 ===================== */
+.reco { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-left: 5px solid var(--ai); background: var(--surface); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
+.reco .ai-dot, .ai-dot.inline { width: 10px; height: 10px; border-radius: 50%; background: var(--ai); flex: none; margin-top: 7px; display: inline-block; }
+.ai-dot.inline { margin: 0 6px 0 0; vertical-align: middle; }
+.ai-btn { border-left: 6px solid var(--ai); }
