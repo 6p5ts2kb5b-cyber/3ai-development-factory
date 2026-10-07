@@ -34,3 +34,79 @@
 a.sync-notice { min-height: 44px; }
 a.sync-notice:active { filter: brightness(.97); }
 .sync-ok { margin: 0 0 12px; font-size: .84rem; color: var(--ink-2); }
+
+/* ===================== Design-1 仕上げ（スマホ） v0.11.1 ===================== */
+/* 下の固定メニュー：透けない。iPhoneホームバーを含め、本文の最後が隠れない */
+:root {
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: 62px;
+}
+body { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 32px); line-break: strict; overflow-wrap: anywhere; }
+.tabbar {
+  background: var(--surface);
+  padding-bottom: var(--safe-b);
+  box-shadow: 0 -6px 16px -12px rgba(23,33,43,.35);
+}
+.tabbar a { min-height: var(--tabbar-h); }
+.toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 16px); }
+.fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
+
+/* 長い文章・項目名：日本語の禁則を守って折り返し、英数字の長い語もはみ出さない */
+h1, h2, h3, .t-title, .pcard h2, .next-text { word-break: auto-phrase; text-wrap: pretty; }
+p, li, dd { text-wrap: pretty; }
+.card p:last-child, .card .muted:last-child { margin-bottom: 0; }
+
+@media (max-width: 559px) {
+  body { line-height: 1.7; }
+  main { padding: 14px 16px 16px; }
+  h1 { font-size: 1.45rem; }
+  .p-head h1 { font-size: 1.55rem; line-height: 1.25; }
+  .card { padding: 16px 14px; }
+  /* 項目名と内容を縦に並べて、内容に横幅を全部使う */
+  .kv.wide { grid-template-columns: 1fr; gap: 0; }
+  .kv.wide dt { font-size: .8rem; margin-top: 10px; }
+  .kv.wide dt:first-child { margin-top: 0; }
+  .kv.wide dd { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .kv.wide dd:last-child { border-bottom: 0; padding-bottom: 0; }
+  .p-meta { gap: 6px 12px; }
+  .p-meta .btn { margin-left: auto; }
+  .pcard footer { gap: 0 12px; }
+  .pcard .next { font-size: .93rem; }
+  .list li { gap: 8px 10px; }
+  .list .grow { min-width: 0; flex-basis: 100%; }
+  .list.tasks .grow, .list.issues .grow, .reqs .grow, .list.cov .grow { flex-basis: auto; }
+  .btns.row .btn { flex: 1 1 auto; }
+}
+
+/* 「すべて／進行中／使用中／完成／改良中」：スマホでは横スクロールせず、等幅の区切りボタンに */
+@media (max-width: 719px) {
+  .chips.scroll {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; overflow: visible;
+    margin: 4px 0 14px; padding: 3px; background: var(--sunk); border-radius: 12px;
+  }
+  .chips.scroll .chip {
+    flex-direction: column; justify-content: center; gap: 0; min-width: 0; min-height: 52px; padding: 6px 2px;
+    border: 0; border-radius: 9px; background: transparent; font-size: .8rem; line-height: 1.25; text-align: center; white-space: nowrap; color: var(--ink-2);
+  }
+  .chips.scroll .chip small {
+    margin: 2px 0 0; font-family: var(--num); font-size: 1.05rem; font-weight: 700; opacity: 1; color: var(--ink);
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .chips.scroll .chip[aria-current] {
+    background: var(--surface); color: var(--ink);
+    box-shadow: 0 1px 2px rgba(23,33,43,.16), 0 0 0 1px var(--line);
+  }
+  .chips.scroll .chip[aria-current]::after {
+    content: ""; display: block; width: 18px; height: 3px; border-radius: 3px; background: var(--signal); margin-top: 4px;
+  }
+}
+@media (max-width: 359px) { .chips.scroll .chip { font-size: .74rem; } }
+
+/* 小さいボタン（解決・＋要望など）は1文字ずつ縦に折り返さない */
+.btn.small { white-space: nowrap; flex: none; }
+.list li > .btn.small { align-self: flex-start; }
+.btn:not(.small) { text-wrap: balance; text-align: center; }
+
+@media (min-width: 960px) {
+  body { padding-bottom: 0; }
+}
