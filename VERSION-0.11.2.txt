@@ -1,0 +1,7 @@
+3AI Development Factory v0.11.2
+2026-10-07
+
+v1.0 completion scope updated:
+- Sync-1 / Sync-2 / Sync-3 / Sync-4a are v1.0 requirements.
+- Sync-4b automatic sync, Sync-5 delete sync, and automatic conflict resolution are v1.1+ candidates.
+- Other v1 completion conditions are unchanged.
