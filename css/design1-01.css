@@ -1,0 +1,119 @@
+/* 3AI Development Factory — 共通スタイル（スマホ優先・ダークモード対応）
+   デザインの考え方「工房の工程票」
+   ・プロジェクト＝工程票（現品票）。次にやること＝安全黄のテープ。完成度＝工場の表示板の数字（DIN系）
+   ・3つのAI＝信号灯（ブランドの3つの丸）
+   ・外部のフォントは読み込まない（通信しない・オフラインで同じ見た目）。端末の書体：Windows=BIZ UDPゴシック／Bahnschrift、iPhone・Mac=ヒラギノ／DIN
+*/
+:root {
+  --bg: #edf0ee;          /* 紙（青みのある鉱物グレー） */
+  --surface: #ffffff;     /* 面 */
+  --surface-2: #f2f4f3;   /* 面の内側 */
+  --sunk: #e3e8e6;        /* くぼみ（メーターの溝など） */
+  --ink: #17212b;         /* 墨（藍がかった黒） */
+  --ink-2: #56636d;       /* 鋼 */
+  --line: #d2d8da;        /* 罫 */
+  --line-strong: #b5bfc3;
+  --accent: #2c48a0;      /* 藍：リンク・選択中・フォーカス */
+  --accent-ink: #ffffff;
+  --signal: #f4c21b;      /* 安全黄：次にやること・完成度 */
+  --signal-ink: #17212b;
+  --btn: #17212b;         /* 主ボタン */
+  --btn-ink: #ffffff;
+  --ok: #1f7a4a;
+  --ok-bg: #e2f2e8;
+  --ng: #b3261e;
+  --ng-bg: #fbe6e3;
+  --warn: #7a5500;
+  --warn-bg: #fff3cf;
+  --ai-chatgpt: #10a37f;
+  --ai-claude: #d97a2b;
+  --ai-gemini: #3b6fd8;
+  --radius: 12px;         /* 大きい面 */
+  --radius-s: 8px;        /* 内側の部品 */
+  --shadow: 0 1px 0 rgba(23,33,43,.04);
+  --lift: 0 10px 30px -12px rgba(23,33,43,.28);
+  --font: "BIZ UDPGothic", "BIZ UDPゴシック", "Hiragino Sans", "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans JP", sans-serif;
+  --num: "DIN Alternate", "Bahnschrift", "DIN Condensed", "Barlow", "Roboto Condensed", var(--font);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151c; --surface: #151f28; --surface-2: #1b2732; --sunk: #22303c; --ink: #e6ecef; --ink-2: #9aa8b3; --line: #2a3742; --line-strong: #3b4b58;
+    --accent: #93abff; --accent-ink: #0e151c; --btn: #e6ecef; --btn-ink: #0e151c;
+    --ok: #74d39c; --ok-bg: #16301f; --ng: #ff8f84; --ng-bg: #3a1c1a; --warn: #f4c95a; --warn-bg: #33290f;
+    --shadow: none; --lift: 0 10px 30px -10px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151c; --surface: #151f28; --surface-2: #1b2732; --sunk: #22303c; --ink: #e6ecef; --ink-2: #9aa8b3; --line: #2a3742; --line-strong: #3b4b58;
+  --accent: #93abff; --accent-ink: #0e151c; --btn: #e6ecef; --btn-ink: #0e151c;
+  --ok: #74d39c; --ok-bg: #16301f; --ng: #ff8f84; --ng-bg: #3a1c1a; --warn: #f4c95a; --warn-bg: #33290f;
+  --shadow: none; --lift: 0 10px 30px -10px rgba(0,0,0,.6);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+  font-size: 16px; line-height: 1.65; min-height: 100vh; font-feature-settings: "palt" 0;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+a { color: var(--accent); text-underline-offset: .2em; }
+h1, h2, h3 { line-height: 1.3; margin: 0 0 .5em; font-feature-settings: "palt" 1; }
+h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: .01em; }
+h2 { font-size: 1.12rem; font-weight: 700; }
+h3 { font-size: 1rem; }
+p { margin: 0 0 .8em; }
+.muted { color: var(--ink-2); font-size: .9rem; }
+::selection { background: var(--signal); color: var(--signal-ink); }
+
+/* ヘッダー：3つの信号灯 */
+.topbar {
+  position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--line);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  display: flex; align-items: center; gap: 10px;
+}
+.brand { font-weight: 800; letter-spacing: .01em; font-size: 1.05rem; display: flex; align-items: center; }
+.brand .dots { display: inline-flex; gap: 4px; margin-right: 10px; padding: 5px 6px; border-radius: 99px; background: var(--ink); }
+.brand .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.topbar .spacer { flex: 1; }
+.badge {
+  display: inline-block; font-size: .74rem; font-weight: 700; padding: 2px 7px; border-radius: 5px; line-height: 1.5;
+  background: var(--surface-2); color: var(--ink-2); white-space: nowrap; border: 1px solid var(--line);
+}
+.badge.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.badge.ng { background: var(--ng-bg); color: var(--ng); border-color: transparent; }
+.badge.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+#phase-badge { font-family: var(--num); font-size: .8rem; letter-spacing: .03em; border-radius: 99px; padding: 3px 10px; }
+
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+/* 面（カード） */
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+}
+.card > h2:first-child { margin-bottom: .6em; }
+.grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+
+.notice { border-left: 4px solid var(--accent); background: var(--surface); padding: 12px 14px; border-radius: var(--radius-s); margin-bottom: 14px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.notice.warn { border-color: transparent; border-left-color: var(--signal); background: var(--warn-bg); }
+.notice.ng { border-color: transparent; border-left-color: var(--ng); background: var(--ng-bg); }
+
+/* 状態リスト */
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; }
+.kv dt { color: var(--ink-2); font-size: .88rem; }
+.kv dd { margin: 0; font-weight: 600; word-break: break-all; }
+
+/* ボタン（指で押しやすい高さ） */
+.btn {
+  appearance: none; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
+  font: inherit; font-weight: 700; min-height: 48px; padding: 10px 16px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  text-decoration: none; width: 100%; transition: transform .08s ease, background-color .15s ease, border-color .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
