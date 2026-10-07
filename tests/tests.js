@@ -24,6 +24,8 @@ import * as Dry from '../js/sync/dryrun.js';
 import * as Reg from '../js/sync/register.js';
 import * as Pull from '../js/sync/pull.js';
 import * as S3 from '../js/sync/sync3.js';
+import * as N from '../js/sync/notice.js';
+import { noticeHtml } from '../js/views/noticebar.js';
 
 const TEST_DB = 'factory-test';
 const T = [];
@@ -1861,6 +1863,100 @@ test('【Sync-3】削除はクラウドへ反映しない・送る途中の失�
     // 端末ごとの記録は送らない
     assert(![...E.cloud.docs.keys()].some(k => /\/settings\/r-(lastTestRun|master|lastBackup)$/.test(k)), '端末ごとの記録をクラウドへ送っていない');
   } finally { await E.done2(); }
+});
+
+
+// ---------------- Phase Sync-4a：半自動のお知らせ（読むだけ・自動で送受信しない） ----------------
+test('【Sync-4a】お知らせの仕組み：クラウドへ書き込まない・記録の中身を読まない・Factoryのデータを変えない', async () => {
+  const code = f => fetch(f, { cache: 'no-cache' }).then(r => r.text()).then(t => t.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
+  for (const f of ['../js/sync/notice.js', '../js/views/noticebar.js']) {
+    const c = await code(f);
+    assert(!/setDoc|writeBatch|updateDoc|addDoc|deleteDoc|runTransaction|\bt\.set\(|\.delete\(/.test(c), `${f} にクラウドへの書き込み・削除の命令がある`);
+    assert(!/getDocsFromServer|readCloudData|pushChanges|pullChanges|resolveConflict|applySyncedRecords|importAll/.test(c), `${f} がクラウドの記録を読む・送受信する`);
+    assert(!/\.(create|update|upsert|remove|purge|restore)\(/.test(c), `${f} がFactoryのデータを書き換える`);
+  }
+  eq(N.NOTICE_GAP_MS, 600000, '画面に戻っただけなら10分に1回まで');
+});
+
+test('【Sync-4a】判定：印の変更番号と、この端末が前回そろえた状態だけで「受け取り待ち」「未送信」を決める', async () => {
+  const st = { datasetId: 'u1', notice: { seq: 5, remote: 0 }, base: { 'specs/a': 'A0', 'specs/b': 'B0' }, ignored: { 'ideas/i': 'I0' }, preexisting: { 'ideas/p': 'P0' } };
+  eq(N.decideRemote({ state: st, meta: { changeSeq: 5, uploadId: 'u1' } }), { remote: 'none' }, '同じ番号 → 受け取り待ちなし');
+  eq(N.decideRemote({ state: st, meta: { changeSeq: 6, uploadId: 'u1' } }), { remote: 'pending', reason: 'newer' }, '番号が進んだ → ほかの端末の更新あり');
+  eq(N.decideRemote({ state: { ...st, notice: { seq: 5, remote: 2 } }, meta: { changeSeq: 5, uploadId: 'u1' } }), { remote: 'pending', reason: 'known' }, '前回の確認で残っていた → まだ残っている');
+  eq(N.decideRemote({ state: st, meta: { changeSeq: 5, uploadId: 'u2' } }), { remote: 'reset' }, 'データセットが違う → 入れ替わり');
+  eq(N.decideRemote({ state: { datasetId: 'u1', lastSeenChangeSeq: 3 }, meta: { changeSeq: 3, uploadId: 'u1' } }), { remote: 'none' }, 'Sync-4aより前に同期した端末（最後に見た番号を使う）');
+  eq(N.decideRemote({ state: st, meta: null }), { remote: 'unknown' }, '印が読めない → 分からない（何も言わない）');
+  const m = o => new Map(Object.entries(o).map(([k, h]) => [k, { hash: h }]));
+  eq(N.countUnsentFrom(m({ 'specs/a': 'A0', 'specs/b': 'B1', 'ideas/i': 'I0', 'ideas/p': 'P0', 'ideas/n': 'N1' }), st), 2, '未送信＝変わった記録＋新しい記録（この端末だけに残す・同期前からあるものは数えない）');
+  eq(N.countUnsentFrom(m({ 'specs/a': 'A0' }), st), 0, 'この端末で削除した記録は数えない（削除は送らない）');
+  const h = noticeHtml({ active: true, enabled: true, unsent: 3, remote: 'pending', reason: 'newer', meta: { lastUpdatedBy: 'PC（Edge）' }, checkedAt: new Date().toISOString() });
+  assert(h.includes('受け取り待ちがあります') && h.includes('PC（Edge）') && h.includes('未送信 <span id="sn-unsent">3</span>件') && h.includes('href="#/account"') && h.includes('自動では送受信しません'), 'お知らせの表示');
+  assert(noticeHtml({ active: true, enabled: true, unsent: 0, remote: 'none', checkedAt: new Date().toISOString() }).includes('そろっています'), 'そろっているとき');
+  eq([noticeHtml({ active: false }), noticeHtml({ active: true, enabled: false })], ['', ''], '同期を始めていない・オフ → 何も表示しない');
+  assert(noticeHtml({ active: true, enabled: true, unsent: 1, remote: 'offline' }).includes('オフラインのため'), 'オフライン');
+});
+
+test('【Sync-4a】2台で：送った端末にはお知らせなし → もう1台に「受け取り待ち」→ 受け取ると消える（読むのは印1件だけ）', async () => {
+  const { E, pc, ip } = await twoDevices();
+  const pref = await N.getNoticePref();
+  const reads = () => E.cloud.ops.slice(mark);
+  let mark = 0;
+  const notice = async (db, o = {}) => { N._resetNoticeCache(); mark = E.cloud.ops.length; return N.getNotice(db, { force: true, online: true, ...o }); };
+  try {
+    await N.setNoticePref(true);
+    await S3.updateSync3State(pc, { datasetId: null });
+    eq((await notice(pc)).active, false, '同期を始めていない端末には何も表示しない');
+    eq(reads().length, 0, '同期を始めていなければクラウドを読まない');
+    await S3.startSync3(pc, { deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    await S3.startSync3(ip, { deviceLabel: 'iPhone（ホーム画面版）', deviceId: 'dev-ip', baseSource: 'none' });
+    let ci = await S3.checkSync3(ip);
+    await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    ci = await S3.checkSync3(ip); await S3.ignoreLocal(ip, ci.diff.push.filter(p => p.fresh)); await S3.checkSync3(ip); await S3.checkSync3(pc);
+    let n = await notice(pc);
+    eq([n.remote, n.unsent], ['none', 0], 'PC：そろっている');
+    eq(reads().map(o => o[0] + ' ' + o[1]), ['get users/uid-123/meta/factory'], '読んだのは自分の「登録済みの印」1件だけ（記録の中身は読まない）');
+    eq([(await notice(ip)).remote, (await notice(ip)).unsent], ['none', 0], 'iPhone：そろっている');
+    await edit(pc, 'projects', p => p.seedKey === 'vintage-hunt', { memo: 'PCで追記（4a）' }, 'PC先生');
+    n = await notice(pc, { online: false });
+    eq([n.remote, n.unsent, reads().length], ['offline', 2, 0], 'オフライン：未送信2件・クラウドには接続しない');
+    N._resetNoticeCache(); mark = E.cloud.ops.length;
+    n = await N.getNotice(pc, { remote: false, online: true });
+    eq([n.unsent, reads().length], [2, 0], '画面の切り替えでは読み直さない（remote:false）');
+    let cp = await S3.checkSync3(pc);
+    await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    n = await notice(pc);
+    eq([n.remote, n.unsent], ['none', 0], 'PC：自分が送った変更は「受け取り待ち」にしない');
+    const ipBefore = JSON.stringify((await ip.exportAll()).data), cloudBefore = JSON.stringify([...E.cloud.docs.entries()]);
+    n = await notice(ip);
+    eq([n.remote, n.reason, n.meta.lastUpdatedBy, n.unsent], ['pending', 'newer', 'PC（Edge）', 0], 'iPhone：受け取り待ちがあります（PCが更新）');
+    eq([JSON.stringify((await ip.exportAll()).data) === ipBefore, JSON.stringify([...E.cloud.docs.entries()]) === cloudBefore], [true, true], 'お知らせを出してもiPhoneのデータ・クラウドは変わらない（自動で受け取らない）');
+    ci = await S3.checkSync3(ip);
+    n = await notice(ip);
+    eq([n.remote, n.reason], ['pending', 'known'], '確認しただけでは消えない');
+    await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    eq((await notice(ip)).remote, 'none', '受け取ると消える');
+    await edit(pc, 'projects', p => p.seedKey === 'storm', { memo: '[PC]' }, 'PC先生');
+    await edit(ip, 'projects', p => p.seedKey === 'storm', { memo: '[iPhone]' }, 'iPhone先生');
+    cp = await S3.checkSync3(pc); await S3.pushChanges({ db: pc, items: cp.diff.push, check: cp, deviceLabel: 'PC（Edge）', deviceId: 'dev-pc' });
+    n = await notice(ip);
+    eq([n.remote, n.unsent], ['pending', 2], 'iPhone：受け取り待ちあり・未送信2件');
+    ci = await S3.checkSync3(ip);
+    const conf = ci.diff.conflicts.find(c => c.store === 'projects');
+    await S3.resolveConflict({ db: ip, conflict: conf, choice: 'cloud', check: ci, deviceLabel: 'iPhone', deviceId: 'dev-ip', actor: 'iPhone先生' });
+    ci = await S3.checkSync3(ip);
+    if (ci.diff.pull.length) await S3.pullChanges({ db: ip, items: ci.diff.pull, check: ci, deviceLabel: 'iPhone' });
+    ci = await S3.checkSync3(ip);
+    n = await notice(ip);
+    eq([n.remote, ci.diff.counts.conflicts], ['none', 0], '競合を解決すると受け取り待ちが消える');
+    await N.setNoticePref(false);
+    n = await notice(ip);
+    eq([n.enabled, reads().length], [false, 0], 'お知らせをオフ → 表示しない・クラウドを読まない');
+    await N.setNoticePref(true);
+    await SyncAuth.signOut();
+    n = await notice(ip);
+    eq([n.remote, reads().filter(o => o[0] === 'get').length], ['signedOut', 0], '未ログイン → クラウドを読まない');
+    eq(E.cloud.ops.filter(o => /delete/i.test(o[0])).length, 0, 'クラウドで削除していない');
+  } finally { await N.setNoticePref(pref.enabled); N._resetNoticeCache(); await E.done2(); }
 });
 
 // ---------------- 実行 ----------------
