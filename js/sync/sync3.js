@@ -37,6 +37,12 @@ function openSyncDB() {
   });
 }
 const q = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+// Sync-4a：お知らせ用の記録（確認した変更番号 seq・残っている受け取り待ち＋競合 remote）。確認したときの番号のままなら、処理した分だけ減らす
+function noticeAfter(st, check, { seq, resolved = 0 } = {}) {
+  const n = st?.notice;
+  if (!n || n.seq !== (check?.changeSeq || 0)) return n || null;
+  return { seq: seq ?? n.seq, remote: Math.max(0, (n.remote || 0) - resolved), at: new Date().toISOString() };
+}
 // 本番は端末ごとにFactoryのデータベースは1つ（名前 factory）なので記録名は 'sync3'。自動テストで2台分を試すときだけ、データベース名ごとに分ける
 const stateId = db => (db?.idb?.name && db.idb.name !== 'factory') ? `sync3:${db.idb.name}` : 'sync3';
 export async function getSync3State(db) { const d = await openSyncDB(); try { return (await q(d.transaction('state').objectStore('state').get(stateId(db)))) || null; } finally { d.close(); } }
@@ -126,6 +132,8 @@ export async function checkSync3(db) {
   const cmap = cloudMap(cloud);
   const started = !!(st && st.datasetId === cloud.uploadId);
   const diff = started ? computeDiff({ local, base: st.base || {}, cloud: cmap, preexisting: st.preexisting || {}, ignored: st.ignored || {} }) : null;
+  // Sync-4a：お知らせ用に「どの変更番号まで確認したか・受け取り待ち＋競合が何件残っているか」を端末内の同期の記録に残す（Factoryのデータ・クラウドは変えない）
+  if (started) await updateSync3State(db, { notice: { seq: cloud.meta.raw.changeSeq || 0, remote: diff.counts.pull + diff.counts.conflicts, at: new Date().toISOString() } });
   return { cloud, cmap, local, exp, state: st, started, diff, meta: cloud.meta.raw, changeSeq: cloud.meta.raw.changeSeq || 0 };
 }
 
@@ -244,7 +252,7 @@ export async function pushChanges({ db: localDb, items, check, deviceLabel, devi
   const st = await getSync3State(localDb);
   const base = { ...(st?.base || {}) };
   for (const it of items) base[it.key] = it.hash;
-  await updateSync3State(localDb, { base, lastPushAt: new Date().toISOString(), lastSyncAt: new Date().toISOString(), lastSeenChangeSeq: seq });
+  await updateSync3State(localDb, { base, lastPushAt: new Date().toISOString(), lastSyncAt: new Date().toISOString(), lastSeenChangeSeq: seq, notice: noticeAfter(st, check, { seq, resolved }) });
   onProgress('done', items.length, items.length);
   return { pushed, changeSeq: seq };
 }
@@ -287,7 +295,8 @@ export async function pullChanges({ db, items, check, onProgress = () => {}, dev
   const st = await getSync3State(db);
   const base = { ...(st?.base || {}) };
   for (const it of items) base[it.key] = it.hash;
-  await updateSync3State(db, { base, lastPullAt: new Date().toISOString(), lastSyncAt: new Date().toISOString(), lastSeenChangeSeq: fresh.meta.raw.changeSeq || 0 });
+  // お知らせ用の変更番号は「確認したときの番号」のまま（受け取りの直前にほかの端末が更新していれば、お知らせに出る）
+  await updateSync3State(db, { base, lastPullAt: new Date().toISOString(), lastSyncAt: new Date().toISOString(), lastSeenChangeSeq: fresh.meta.raw.changeSeq || 0, notice: noticeAfter(st, check, { resolved: items.length }) });
   onProgress('done');
   return { applied: items.length, snapshotId: snap.id };
 }
@@ -311,7 +320,7 @@ export async function resolveConflict({ db, conflict, choice, picks = {}, check,
   if (choice === 'keepDeleted') {
     // この端末の削除を保つ：クラウドは変えない。基準をクラウドの今の指紋にして、受け取り待ちに出さない
     const st = await getSync3State(db);
-    return updateSync3State(db, { base: { ...(st?.base || {}), [conflict.key]: conflict.cloud.hash } });
+    return updateSync3State(db, { base: { ...(st?.base || {}), [conflict.key]: conflict.cloud.hash }, notice: noticeAfter(st, check, { resolved: 1 }) });
   }
   let rec;
   if (choice === 'local') rec = conflict.local.rec;
