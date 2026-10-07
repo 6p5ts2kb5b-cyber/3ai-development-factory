@@ -4,6 +4,8 @@ import { esc, toast, copyText } from '../ui.js';
 import { initAuth, onAuth, signIn, signOut, deviceKind, envInfo, FIREBASE_SDK_VERSION } from '../sync/auth.js';
 import { checkCloudStatus } from '../sync/cloud.js';
 import { mountSync3 } from './sync3view.js';
+import { getNoticePref, setNoticePref } from '../sync/notice.js';
+import { fillNotice } from './noticebar.js';
 
 const NOTE = 'PCとiPhoneで同じFactoryデータを使えます（Sync-3：ボタンを押したときだけ同期）。クラウドへ送る・この端末へ反映するのは、件数と内容を確認してボタンを押したときだけです。削除はクラウドへ反映しません。';
 
@@ -11,7 +13,13 @@ export async function accountView(view, ctx) {
   view.innerHTML = `<h1>Googleログイン</h1>
     <div class="notice slim" id="acc-note">${esc(NOTE)}</div>
     <section class="card" id="acc-card"><p class="muted">確認しています…</p></section>
+    <div data-sync-notice="account" class="sn-slot"></div>
     <section class="card" id="sync3-card"></section>
+    <section class="card" id="notice-card">
+      <h2>同期のお知らせ</h2>
+      <label class="check"><input type="checkbox" id="notice-on"><span>Factoryを開いたときに「受け取り待ち」「未送信」を知らせる</span></label>
+      <p class="muted">クラウドの「登録済みの印」を1件読むだけです（記録の中身は読みません）。自動で送る・受け取ることはしません。オフライン・未ログインのときは、この端末の未送信の数だけを表示します。この設定はこの端末だけのものです。</p>
+    </section>
     <h2 class="section-title">初回セットアップ・災害復旧用</h2>
     <p class="muted">ふだんの同期は上の「PC・iPhoneの同期」を使います。下は、新しい端末の最初の準備や、もしものときの復旧に使います。</p>
     <section class="card" id="cloud-card">
@@ -28,6 +36,10 @@ export async function accountView(view, ctx) {
       <a class="btn" href="#/sync-check">同期の予行演習を開く</a>
     </section>
     <section class="card" id="reg-card">${regCardHtml({ state: 'unchecked' })}</section>`;
+  // Sync-4a：お知らせのオン・オフ（この端末だけ）
+  const nOn = view.querySelector('#notice-on');
+  getNoticePref().then(p => { nOn.checked = p.enabled; }).catch(() => {});
+  nOn.onchange = async () => { await setNoticePref(nOn.checked); toast(nOn.checked ? 'お知らせをオンにしました' : 'お知らせをオフにしました（同期はボタンでいつでもできます）'); fillNotice(ctx, { force: nOn.checked }); };
   const card = view.querySelector('#acc-card');
   let busy = false;
   const render = s => {
@@ -102,7 +114,7 @@ export async function accountView(view, ctx) {
 export function accountCardHtml() {
   return `<section class="card">
       <h2>Googleログイン・同期</h2>
-      <p><span class="badge">Sync-3</span> PC・iPhoneの同期（ボタンを押したときだけ）ができます。自動の同期はまだです。</p>
+      <p><span class="badge">Sync-3</span> PC・iPhoneの同期（ボタンを押したときだけ）ができます。<span class="badge">Sync-4a</span> 受け取り待ち・未送信をホームでお知らせします。自動の同期はまだです（送る・受け取るはボタンで行います）。</p>
       <p class="muted">同期がなくても、この端末だけで全機能が使えます。端末間の移動は「バックアップ」のファイルでも行えます。（Firebase ${esc(FIREBASE_SDK_VERSION)}・無料のSparkプラン）</p>
       <div class="btns"><a class="btn" href="#/account">Googleログインを開く</a><a class="btn" href="#/sync-check">同期の予行演習</a></div>
     </section>`;
