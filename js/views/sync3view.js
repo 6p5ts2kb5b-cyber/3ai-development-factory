@@ -141,6 +141,7 @@ export function mountSync3(box, ctx) {
     S.busy = true; S.error = null; render();
     try { await fn(); } catch (e) { S.error = sync3ErrorMessage(e); }
     S.busy = false; await render();
+    dispatchEvent(new Event('factory:sync-changed'));   // Sync-4a：お知らせの表示を更新（クラウドは読み直さない）
   };
   const runCheck = (msg = '') => busy(async () => { const r = await checkSync3(ctx.db); r.checkedAt = new Date().toISOString(); S.check = r; S.msg = msg; if (S.panel && !(r.diff && ((S.panel === 'push' && r.diff.push.length) || (S.panel === 'pull' && r.diff.pull.length) || (S.panel === 'conf' && r.diff.conflicts.length)))) S.panel = null; });
   const start = () => busy(async () => {
