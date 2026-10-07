@@ -1,0 +1,91 @@
+.ai-chips { margin-top: 0; }
+.ai-cols { display: grid; gap: 12px; margin-top: 8px; }
+.ai-col { border: 1px solid var(--line); border-top: 5px solid var(--ai); border-radius: 12px; padding: 10px 12px; min-width: 0; background: var(--surface); }
+.ai-col header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.ai-col header .ai-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ai); }
+.ai-answer { background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 50vh; overflow: auto; font-size: .92rem; }
+.dec-btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.dec-btns .btn.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.badge.dec-adopt { background: var(--ok-bg); color: var(--ok); }
+.badge.dec-hold { background: var(--warn-bg); color: var(--warn); }
+.badge.dec-reject { background: var(--ng-bg); color: var(--ng); }
+.ok-note { color: var(--ok); font-size: .9rem; }
+.warn-note { color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 4px 8px; font-size: .85rem; margin-top: 4px; }
+.src { font-size: .8rem; color: var(--ink-2); }
+@media (max-width: 959px) {
+  .ai-cols[data-show="chatgpt"] .ai-col:not([data-col="chatgpt"]),
+  .ai-cols[data-show="claude"] .ai-col:not([data-col="claude"]),
+  .ai-cols[data-show="gemini"] .ai-col:not([data-col="gemini"]) { display: none; }
+}
+@media (min-width: 960px) { .ai-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cmp-chips { display: none; } }
+.file-item .ver { font-weight: 700; color: var(--ink); font-family: var(--num); }
+.btns.row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.btns.row .btn { width: auto; }
+.badge.file-active { background: var(--ok-bg); color: var(--ok); }
+.badge.file-old { background: var(--surface-2); color: var(--ink-2); }
+.badge.file-draft { background: #e6eefc; color: #2b56b0; }
+.badge.file-hold { background: var(--warn-bg); color: var(--warn); }
+pre.code { max-height: 50vh; }
+.url-row { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 4px; min-width: 0; word-break: break-all; }
+.url-line { word-break: break-all; }
+.pi-list li { margin: 4px 0; }
+
+/* ===================== Phase 6 追加 ===================== */
+.cond { list-style: none; margin: 0; padding: 0; }
+.cond li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cond li:last-child { border-bottom: 0; }
+.cond .mark { font-size: 1.15rem; line-height: 1.4; flex: none; }
+.cond li.ng strong { color: var(--ink); }
+.how { margin-top: 4px; font-size: .88rem; background: var(--warn-bg); color: var(--ink); border-radius: 6px; padding: 4px 8px; }
+.v1-head .v1-left { font-size: 1.15rem; margin: 0 0 4px; }
+.v1-head .v1-left strong { font-family: var(--num); font-size: 2.6rem; line-height: 1; color: var(--ink); margin: 0 .1em; vertical-align: -.1em; }
+.v1-strip { color: var(--ink); background: var(--surface); border-left: 4px solid var(--signal); }
+.err-text { color: var(--ng); font-size: .9rem; }
+.timeline li.ng-item::before { background: var(--ng); }
+.checks.col { flex-direction: column; }
+.checks.col .check { align-items: flex-start; }
+.checks.col .check small { display: block; }
+
+/* ---- Phase 7：既存アプリ取込・初期登録 ---- */
+.pcard-origin { margin-top: 4px; position: relative; pointer-events: none; }
+.seed-card { border: 2px solid var(--ink); }
+.flow { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; counter-reset: fl; }
+.flow li { counter-increment: fl; font-size: .85rem; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+.flow li::before { content: counter(fl) ". "; }
+.flow li.done { background: var(--ok-bg); color: var(--ok); }
+.flow li.done::before { content: "✓ "; }
+.list.cov li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.list.cov .grow { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.list.cov .cov-sel { flex: 0 0 auto; max-width: 100%; }
+.ex-box { margin: 8px 0 12px; }
+.ex-box summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.origin-pick .checks { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---- Sync-1：Googleログイン ---- */
+code.uid { font-size: .8rem; word-break: break-all; background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
+#cloud-result .badge { white-space: normal; }
+
+/* ---- Sync-2-3：初回正本登録 ---- */
+.rg-progress { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.rg-progress[hidden] { display: none; }
+.rg-progress .card { max-width: 420px; width: 100%; }
+
+/* ---- Sync-3：PC・iPhoneの同期 ---- */
+.section-title { margin: 28px 0 4px; font-size: 1.05rem; }
+.s3-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+@media (min-width: 640px) { .s3-actions { grid-template-columns: 1fr 1fr; } }
+.s3-actions .btn { width: 100%; min-height: 48px; }
+.s3-sub { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.s3-list li { padding: 10px 0; }
+.s3-list .check { align-items: flex-start; }
+.s3-list .check input { margin-top: 4px; }
+.ng-text { color: var(--ng); }
+.ok-notice { border-left-color: var(--ok); }
+.s3-conf { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 12px 0; background: var(--surface); }
+.s3-conf h4 { margin: 0 0 8px; }
+.s3-versions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.s3-ver { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.s3-ver h5 { margin: 0 0 4px; font-size: .9rem; }
+.s3-ver p { margin: 0; font-size: .85rem; }
+.s3-diff { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; font-size: .9rem; }
+.s3-diff th, .s3-diff td { border-top: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
