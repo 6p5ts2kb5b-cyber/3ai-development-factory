@@ -31,6 +31,7 @@ export async function homeView(ctx, view, params) {
       <a class="btn primary big" href="#/talk"><span aria-hidden="true">💬</span> 話すだけで相談</a>
       <button class="btn big" id="home-add-req"><span aria-hidden="true">＋</span> 要望を追加</button>
     </section>
+    <div data-sync-notice="home" class="sn-slot"></div>
     ${backupDays === null || backupDays >= 7 ? `<a class="notice warn slim" href="#/backup">${backupDays === null ? 'まだバックアップがありません' : `最後のバックアップから${backupDays}日`} → 保存する</a>` : ''}
     ${seedBannerHtml(projects)}
     <div class="page-head">
