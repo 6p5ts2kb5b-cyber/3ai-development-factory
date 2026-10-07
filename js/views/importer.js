@@ -58,7 +58,7 @@ export async function importTab({ ctx, el, p }) {
       <form id="exf" novalidate>${existingFieldsHtml(m, ex)}
         <p class="muted">現在のソースコード／ファイルは「ファイル」タブで登録します（登録済み ${files.length}件）。<a href="#/p/${esc(p.id)}/files">ファイルタブを開く</a></p>
         <div id="exf-err"></div>
-        <div class="btns"><button class="btn primary">保存</button><button type="button" class="btn" id="ex-done">${imported ? '基準Versionを記録し直す' : '取込を完了（基準Versionとして記録）'}</button></div>
+        <div class="btns"><button class="btn primary">保存</button><button type="button" class="btn" id="ex-done">${imported ? '基準Versionを記録し直す' : '取込を完了（基準Versionとして記録）'}</button>${!imported ? '<button type="button" class="btn" id="ex-origin-new">既存アプリなし（新しく作る）に戻す</button>' : ''}</div>
       </form>
     </section>
     <section class="card" id="cov-card">
@@ -82,6 +82,12 @@ export async function importTab({ ctx, el, p }) {
   el.querySelector('#ex-done').onclick = async () => {
     try { await db.saveExisting(p.id, data()); await db.completeImport(p.id); toast('取込を完了し、現在の状態を基準Versionとして記録しました'); ctx.refresh(); }
     catch (err) { el.querySelector('#exf-err').innerHTML = errorHtml(err); el.querySelector('#exf-err').scrollIntoView({ block: 'nearest' }); }
+  };
+  const backToNew = el.querySelector('#ex-origin-new');
+  if (backToNew) backToNew.onclick = async () => {
+    await db.setOrigin(p.id, 'new');
+    toast('「既存アプリなし（新しく作る）」に戻しました');
+    location.hash = `#/p/${encodeURIComponent(p.id)}`;
   };
   el.querySelectorAll('[data-cov]').forEach(s => s.onchange = async () => { await db.setCoverage(p.id, s.dataset.cov, s.value); toast(`「${label(m, 'coverageStatuses', s.value)}」にしました`); ctx.refresh(); });
   const bar = el.querySelector('#cov-bar');
