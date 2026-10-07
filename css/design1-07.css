@@ -41,11 +41,23 @@ a.sync-notice:active { filter: brightness(.97); }
   --safe-b: env(safe-area-inset-bottom, 0px);
   --tabbar-h: 62px;
 }
-body { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 32px); line-break: strict; overflow-wrap: anywhere; }
+body { padding-bottom: 0; line-break: strict; overflow-wrap: anywhere; }
+main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 40px); }
 .tabbar {
   background: var(--surface);
   padding-bottom: var(--safe-b);
   box-shadow: 0 -6px 16px -12px rgba(23,33,43,.35);
+  isolation: isolate;
+}
+/* iPhone Safariの可変ツールバーで固定メニューの下に本文が見える隙間を作らない */
+.tabbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  height: 100vh;
+  background: var(--surface);
+  pointer-events: none;
+  z-index: -1;
 }
 .tabbar a { min-height: var(--tabbar-h); }
 .toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 16px); }
