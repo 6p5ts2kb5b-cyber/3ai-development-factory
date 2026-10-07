@@ -14,7 +14,8 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
     items.push({ group: '仕様・開発', label: `Phase ${ph.no} ${ph.name}`, ok: done, detail: ph.status || '未着手', how: done ? '' : ph.no === 7 ? '7つの実案件をFactoryに登録します（Claudeが実装）' : '開発を進めます（Claudeが実装）' });
   }
   // 2026-10-05 方針変更：複数端末同期もv1完成の条件
-  for (const st of handoff?.sync?.stages || []) {
+  // 2026-10-07 方針決定：v1.0の同期はSync-3（明示ボタン式）＋Sync-4a（半自動お知らせ）まで。v1: false の段階（自動同期・削除の同期・競合の自動解決）は判定に入れない
+  for (const st of (handoff?.sync?.stages || []).filter(x => x.v1 !== false)) {
     const done = String(st.status || '').startsWith('完了');
     items.push({ group: '複数端末同期', label: `${st.key} ${st.name}`, ok: done, detail: st.status || '未着手', how: done ? '' : st.key === 'Sync-1' ? 'Firebaseの設定（Claudeが1画面ずつ案内）の後、学校Surface → iPhoneホーム画面版の順にGoogleログインを確認します' : '前の段階の実機確認が合格してから、Claudeが実装します' });
   }
@@ -33,6 +34,8 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
   items.push({ group: '公開・運用', label: 'バックアップの作成', ok: !!lastBackup, detail: lastBackup ? `${fmtDate(lastBackup.at)} 作成` : 'まだありません', how: '「バックアップ」から保存してください' });
   return items;
 }
+// v1.0の完成条件ではない改善候補（表示だけ。判定には入れない）
+export const v1LaterItems = handoff => (handoff?.sync?.stages || []).filter(x => x.v1 === false);
 
 export async function v1View(ctx, view, { loadHandoff }) {
   const db = ctx.db, m = ctx.master;
@@ -51,6 +54,7 @@ export async function v1View(ctx, view, { loadHandoff }) {
     ${seedBannerHtml(projects)}
     ${groups.map(g => `<section class="card"><h2>${esc(g)}</h2><ul class="cond">${items.filter(i => i.group === g).map(i => `<li class="${i.ok ? 'ok' : 'ng'}"><span class="mark">${i.ok ? '✅' : '⬜'}</span>
       <div><strong>${esc(i.label)}</strong><div class="muted">${esc(i.detail)}</div>${!i.ok && i.how ? `<div class="how">👉 ${esc(i.how)}</div>` : ''}</div></li>`).join('')}</ul></section>`).join('')}
+    ${v1LaterItems(handoff).length ? `<section class="card v1-later"><h2>v1.1以降の改善候補</h2><p class="muted">v1.0の完成条件ではありません（2026-10-07 決定）。指示があるまで実装しません。</p><ul class="tight">${v1LaterItems(handoff).map(x => `<li>${esc(x.key === x.name ? x.name : `${x.key} ${x.name}`)}</li>`).join('')}</ul></section>` : ''}
     <h2 style="margin-top:20px">Factory本体の確認記録</h2>
     ${checksHtml(m, devices, publish)}`;
   bindChecks(view, ctx, FACTORY_ID, { devices, publish });
