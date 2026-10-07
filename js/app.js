@@ -22,7 +22,8 @@ import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
 import { syncImportView } from './views/syncimport.js?v=0901';
-export const APP_VERSION = '0.10.0';
+import { fillNotice } from './views/noticebar.js';
+export const APP_VERSION = '0.10.1';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -54,7 +55,17 @@ async function boot() {
   addEventListener('online', upd); addEventListener('offline', upd); upd();
 
   addEventListener('hashchange', () => route());
-  route();
+  await route();
+
+  // Sync-4a：半自動のお知らせを起動する
+  // クラウドは meta の印1件だけを読む。送受信は自動では行わない。
+  noticeStarted = true;
+  await fillNotice(ctx, { force: true });
+  addEventListener('online', () => fillNotice(ctx, { force: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') fillNotice(ctx);
+  });
+  addEventListener('factory:sync-changed', () => fillNotice(ctx, { remote: false }));
 }
 
 // 画面部品へ渡す共通情報
