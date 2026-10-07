@@ -14,7 +14,7 @@ import { buildComparePrompt, recommendAI, aiRoles, detectUrlKind, groupFiles, bu
 import { completionItems } from '../js/logic.js';
 import { FACTORY_ID } from '../js/db.js';
 import { projectHandoffMarkdown, collectHandoff } from '../js/views/phandoff.js';
-import { v1Items } from '../js/views/v1.js';
+import { v1Items, v1LaterItems } from '../js/views/v1.js';
 import { PROJECT_CHILD_STORES } from '../js/db.js';
 import { loadInitialProjects, seedInitialProjects, seedStatus, seededCount } from '../js/seed.js';
 import { specItems, coverageSummary } from '../js/logic.js';
@@ -1957,6 +1957,18 @@ test('【Sync-4a】2台で：送った端末にはお知らせなし → もう1
     eq([n.remote, reads().filter(o => o[0] === 'get').length], ['signedOut', 0], '未ログイン → クラウドを読まない');
     eq(E.cloud.ops.filter(o => /delete/i.test(o[0])).length, 0, 'クラウドで削除していない');
   } finally { await N.setNoticePref(pref.enabled); N._resetNoticeCache(); await E.done2(); }
+});
+
+test('【v1範囲】自動同期（Sync-4b）・削除の同期（Sync-5）・競合の自動解決は v1完成の判定に入れない（2026-10-07 決定）', async () => {
+  const h = await loadHandoff();
+  const m = await loadMaster(db);
+  const items = v1Items({ handoff: h, projects: [], devices: [], publish: [], lastTest: null, lastBackup: null }, m);
+  const sync = items.filter(i => i.group === '複数端末同期');
+  eq(sync.map(i => i.label.split(' ')[0]), ['Sync-1', 'Sync-2', 'Sync-3', 'Sync-4a'], 'v1の同期の条件＝Sync-1・2・3・4a');
+  eq(sync.every(i => i.ok), true, 'v1の同期の条件はすべて完了');
+  assert(!items.some(i => /Sync-4b|Sync-5|自動解決/.test(i.label)), 'v1.1以降の改善候補が判定に入っている');
+  eq(v1LaterItems(h).map(x => x.key), ['Sync-4b', 'Sync-5', '競合の自動解決'], '改善候補として表示');
+  eq([...new Set(items.map(i => i.group))], ['仕様・開発', '複数端末同期', '公開・運用'], '条件のまとまり（実機確認の記録がないときは実機確認の行は出ない）');
 });
 
 // ---------------- 実行 ----------------
