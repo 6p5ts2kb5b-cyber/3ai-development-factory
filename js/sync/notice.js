@@ -84,7 +84,8 @@ export async function getNotice(db, { force = false, online = (typeof navigator 
   const out = { active: true, enabled: true, unsent };
   if (!online) return { ...out, remote: 'offline' };
   const fresh = cache.meta && Date.now() - cache.at < NOTICE_GAP_MS;
-  if (remote && (force || !fresh)) {
+  const justRead = cache.meta && Date.now() - cache.at < 3000;   // 同じ合図が続けて届いたとき（オンライン復帰など）は読み直さない
+  if (remote && ((force && !justRead) || !fresh)) {
     cache.inflight = cache.inflight || (async () => {
       try {
         await initAuth();
