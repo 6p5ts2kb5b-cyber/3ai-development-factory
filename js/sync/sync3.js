@@ -191,7 +191,7 @@ export async function ignoreLocal(db, items) {
 /**
  * @param {object} p { items: computeDiff の push（選んだもの）, check: checkSync3 の結果, deviceLabel, deviceId, onProgress }
  */
-export async function pushChanges({ db: localDb, items, check, deviceLabel, deviceId, onProgress = () => {} }) {
+export async function pushChanges({ db: localDb, items, check, deviceLabel, deviceId, onProgress = () => {}, resolved = 0 }) {
   const uid = uidOrThrow();
   if (!items.length) return { pushed: 0 };
   const { fs, db } = await firestoreHandle();
@@ -334,7 +334,7 @@ export async function resolveConflict({ db, conflict, choice, picks = {}, check,
   } else throw new Error('選び方が正しくありません');
   const hash = await sha256(JSON.stringify(rec));
   // クラウドへ送る（クラウド側が確認したときのままであることを確かめてから）
-  return pushChanges({ db, items: [{ key: conflict.key, store: conflict.store, id: conflict.id, kind: 'update', rec, hash, cloudHash: conflict.cloud.hash }], check, deviceLabel, deviceId });
+  return pushChanges({ db, items: [{ key: conflict.key, store: conflict.store, id: conflict.id, kind: 'update', rec, hash, cloudHash: conflict.cloud.hash }], check, deviceLabel, deviceId, resolved: 1 });
 }
 
 export function sync3ErrorMessage(e) {
