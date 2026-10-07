@@ -1,0 +1,36 @@
+.s3-diff thead th { font-size: .8rem; color: var(--ink-2); }
+.s3-diff tbody th { width: 22%; font-weight: 700; }
+.s3-diff .check { align-items: flex-start; gap: 6px; }
+.s3-diff .check input { margin-top: 3px; flex: none; }
+/* 長い一覧でも「送る」「反映する」ボタンが見つけやすいよう、画面の下に固定 */
+.sticky-actions { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0; z-index: 5; box-shadow: 0 -8px 12px -8px rgba(0,0,0,.12); }
+@media (min-width: 960px) { .sticky-actions { bottom: 0; } }
+/* iPhone：入力中もモーダルの保存ボタンが見えるよう、ボタン列を下に固定 */
+.modal form > .btns:last-of-type, .modal > .btns:last-child { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin-bottom: calc(-20px - env(safe-area-inset-bottom)); z-index: 2; }
+.btn { min-height: 44px; }
+
+/* 競合：項目ごとの選択カード（小さい画面では縦に並べる） */
+.s3-fields { margin: 10px 0; }
+.s3-field { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+.s3-field legend { font-weight: 700; font-size: .95rem; margin-bottom: 6px; padding: 0; }
+.s3-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .s3-opts { grid-template-columns: 1fr; } }
+.s3-opt { display: block; border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 48px; cursor: pointer; background: var(--surface); }
+.s3-opt:has(input:checked) { border-color: var(--ink); background: var(--surface-2); }
+.s3-opt input { width: 20px; height: 20px; vertical-align: -4px; margin: 0 6px 0 0; accent-color: var(--ink); }
+.s3-opt-h { font-weight: 700; font-size: .9rem; }
+.s3-opt-v { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+@media (max-width: 420px) { .s3-versions { grid-template-columns: 1fr; } }
+
+/* Sync-4a：同期のお知らせ */
+.sn-slot:empty { display: none; }
+.sync-notice { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; padding: 10px 14px; }
+.sync-notice .sn-lines { display: flex; flex-direction: column; gap: 6px; }
+.sync-notice .sn-line { display: flex; flex-direction: column; gap: 1px; }
+.sync-notice .sn-line strong { font-size: 1rem; }
+.sync-notice .sn-line > span { font-size: .88rem; color: var(--ink-2); }
+.sync-notice .sn-sub { font-size: .8rem; }
+.sync-notice .sn-go { font-size: .9rem; font-weight: 700; color: var(--ink); min-height: 24px; text-decoration: underline; text-decoration-color: var(--signal); text-decoration-thickness: 3px; text-underline-offset: .25em; }
+a.sync-notice { min-height: 44px; }
+a.sync-notice:active { filter: brightness(.97); }
+.sync-ok { margin: 0 0 12px; font-size: .84rem; color: var(--ink-2); }
