@@ -22,7 +22,7 @@ import { accountView, accountCardHtml } from './views/account.js';
 import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
 import { syncImportView } from './views/syncimport.js?v=0901';
-export const APP_VERSION = '0.9.0';
+export const APP_VERSION = '0.10.0';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -95,8 +95,9 @@ async function route({ keepScroll = false } = {}) {
   // 画面を続けて切り替えたとき、前の画面の表示が後から上書きしてしまった場合は、今の画面を表示し直す（iPhoneホーム画面版での安定化）
   if (my !== routeSeq) { if (!rerouting) { rerouting = true; queueMicrotask(() => { rerouting = false; route({ keepScroll: true }); }); } return; }
   window.scrollTo(0, keepScroll ? y : 0);
+  if (noticeStarted) fillNotice(ctx);   // Sync-4a：ホーム・同期の画面ならお知らせを表示（クラウドを読むのは10分に1回まで）
 }
-let routeSeq = 0, rerouting = false;
+let routeSeq = 0, rerouting = false, noticeStarted = false;
 function notFound() { view.innerHTML = `<div class="card"><h1>ページが見つかりません</h1><a class="btn" href="#/">ホームへ戻る</a></div>`; }
 
 async function storageInfo() {
