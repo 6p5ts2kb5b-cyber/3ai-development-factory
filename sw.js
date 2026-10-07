@@ -1,6 +1,6 @@
 // オフライン動作用。アプリ本体のファイルを端末に保存し、電波がなくても起動できるようにします。
 // ファイルを更新したら CACHE の版数を上げてください（例：factory-v2）。
-const CACHE = 'factory-v25';
+const CACHE = 'factory-v27';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/design1-07.css', 'css/design1-06.css', 'css/design1-05.css', 'css/design1-04.css', 'css/design1-03.css', 'css/design1-02.css', 'css/design1-01.css',
   'js/app.js', 'js/db.js', 'js/schema.js', 'js/master.js', 'js/handoff.js', 'js/backup.js', 'js/ui.js', 'js/sync/adapter.js',
