@@ -37,7 +37,17 @@ async function rejects(p, msg) {
   throw new Error(msg);
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const delDB = name => new Promise((res, rej) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = res; r.onerror = () => rej(r.error); r.onblocked = res; });
+const delDB = name => new Promise((res, rej) => {
+  const attempt = () => {
+    const r = indexedDB.deleteDatabase(name);
+    r.onsuccess = () => res();
+    r.onerror = () => rej(r.error);
+    // iPhone/Safariでは close() 直後でも一瞬 blocked になることがある。
+    // blocked を「削除完了」とみなさず、少し待って削除をやり直す。
+    r.onblocked = () => setTimeout(attempt, 40);
+  };
+  attempt();
+});
 
 let db, ctx = {};
 
@@ -1475,7 +1485,10 @@ function memFirestore() {
 async function regEnv() {
   const f = fakeFirebase(), cloud = memFirestore();
   SyncAuth._setLoader(async () => f.mod); SyncCloud._setFirestoreLoader(async () => cloud.mod);
-  await SyncAuth.initAuth({ config: FAKE_CFG }); await SyncAuth.signIn({ env: {}, watchdogMs: 0 });
+  await SyncAuth.initAuth({ config: FAKE_CFG });
+  await SyncAuth.signIn({ env: {}, watchdogMs: 0 });
+  // 前のテスト環境の後始末が遅いSafariでも、現在のにせ認証が確実に有効になってから進む。
+  if (!SyncAuth.currentUid?.() && !SyncAuth.authState?.().user?.uid) await SyncAuth.signIn({ env: {}, watchdogMs: 0 });
   await delDB('factory-test23');
   const d = await FactoryDB.open('factory-test23'); d.actor = 'テスト担当'; await loadMaster(d);
   const seed = await loadInitialProjects(); await seedInitialProjects(d, seed);
