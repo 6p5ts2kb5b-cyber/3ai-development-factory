@@ -7,9 +7,8 @@
 import { currentUid } from './auth.js';
 import { firestoreHandle, META_PATH, describeMeta } from './cloud.js';
 import { isSyncTarget, analyzeForSync, fingerprint, SYNC_TARGET_STORES } from './dryrun.js';
-import { sha256, saveSnapshot, getSnapshot } from './register.js';
+import { sha256, saveSnapshot, getSnapshot, SYNC_DB } from './register.js';
 
-const SYNC_DB = 'factory-sync';
 const IMPORT_SNAPSHOT_PREFIX = 'factory-import-snapshot:';
 export function getImportSnapshotFallback(id) {
   try { const s = localStorage.getItem(IMPORT_SNAPSHOT_PREFIX + id); return s ? JSON.parse(s) : null; } catch { return null; }
