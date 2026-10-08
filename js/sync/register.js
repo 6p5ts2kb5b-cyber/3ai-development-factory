@@ -14,7 +14,12 @@ export const CHUNK_UNITS = 250000;     // 1つの部分の最大文字数（UTF-
 export const CHUNK_OVER = 700000;      // これを超える記録（バイト数）は分割して送る
 export const BATCH_MAX_OPS = 200;      // 1回にまとめて送る件数の上限
 export const BATCH_MAX_BYTES = 4000000; // 1回にまとめて送る大きさの上限（約4MB）
-export const SYNC_DB = 'factory-sync'; // 端末内の控え・照合用の記録（Factoryのデータベースとは別）
+export let SYNC_DB = 'factory-sync'; // 端末内の控え・照合用の記録（Factoryのデータベースとは別）
+// 自動テストだけが使う：同期の記録をテスト専用のデータベースへ切り替える（本番の factory-sync に書き込まないため。v0.11.7）
+export function _useSyncDBForTest(name) {
+  if (!/^factory-test/.test(name)) throw new Error('テスト専用（factory-test…）の名前だけ指定できます');
+  SYNC_DB = name;
+}
 
 const enc = new TextEncoder();
 const bytesOf = s => enc.encode(s).length;
