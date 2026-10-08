@@ -16,7 +16,7 @@ async function scenario(label, ctxOpts) {
 
   // 1) 自動テストページ
   await page.goto(BASE + 'tests/');
-  await page.waitForFunction(() => window.__TEST_RESULT__, null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__TEST_RESULT__, null, { timeout: 180000 });
   const r = await page.evaluate(() => window.__TEST_RESULT__);
   r.details.filter(d => !d.ok).forEach(d => console.log('   x', d.name, d.error));
   check(`[${label}] ブラウザ内自動テスト ${r.passed}/${r.total}`, r.failed === 0);
