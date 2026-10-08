@@ -165,8 +165,10 @@ async function scenario(label, iphoneOpts) {
   await home(ip);
   check(L('オフライン：未送信の数と「クラウドは確認していません」'), await waitNotice(ip, 'home', '未送信 2件', 'オフラインのため'));
   check(L('オフライン中はクラウドを読まない'), reads(cloud, mark).length === 0);
+  // 3秒以内に読んだばかりなら読み直さない仕組みのため、オンラインに戻す「前」に少し待つ
+  // （戻した直後にブラウザの合図とテストの合図が続けて届く。2つ目は読み直さないので、読むのは1回だけ）
+  await ip.waitForTimeout(3200);
   await IP.ctx.setOffline(false);
-  await ip.waitForTimeout(3200);   // 3秒以内に読んだばかりなら読み直さない仕組みのため、少し待つ
   await ip.evaluate(() => dispatchEvent(new Event('online')));
   check(L('オンラインに戻ると印を読み直す'), await ip.waitForFunction(() => document.querySelector('[data-sync-notice="home"]')?.innerText.includes('に確認'), null, { timeout: 15000 }).then(() => true).catch(() => false) && reads(cloud, mark).filter(o => o[1] === META).length === 1);
 
