@@ -70,7 +70,7 @@ p, li, dd { text-wrap: pretty; }
 
 @media (max-width: 559px) {
   body { line-height: 1.7; }
-  main { padding: 14px 16px 16px; }
+  main { padding: 14px 16px calc(var(--tabbar-h) + var(--safe-b) + 40px); }   /* v0.11.7：下メニュー分の余白をスマホでも残す（v0.11.5で本文側へ移した余白が、ここで16pxに戻っていた） */
   h1 { font-size: 1.45rem; }
   .p-head h1 { font-size: 1.55rem; line-height: 1.25; }
   .card { padding: 16px 14px; }
