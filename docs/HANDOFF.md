@@ -4,7 +4,8 @@
 
 ## プロジェクト
 - 名称：3AI Development Factory（指示書 v1.0 に基づく）
-- Factory v0.11.2（v0.7.0 は Phase 7 完了版として保管）
+- Factory v0.11.7（v0.7.0 は Phase 7 完了版として保管）
+- v0.11.7：iPhoneの自動テスト不合格（45/88）を修正。原因はテスト用データベースの削除処理（v0.11.4〜）。詳しくは CHANGELOG と config/handoff.json の phaseLog
 - 構成：HTML + CSS + JavaScript（ビルド不要）、PWA、データは端末内 IndexedDB（schema v5）、GitHub Pages で無料公開
 
 ## Phaseの状況
@@ -128,7 +129,7 @@ PWA土台、IndexedDB、共通項目自動付与、変更履歴、ゴミ箱/復�
 - Phase 1〜7 画面操作テスト 603/603（回帰）
 - Sync-1 78・Sync-2-1 54・Sync-2-2 63・Sync-2-3 90・Sync-2-4 72・Sync-3 70・Sync-4a 56（回帰）
 - Design-1：iPhone SE・13・Pro Max・PC × 22画面を確認
-- **合計 1174/1174 合格**
+- **合計 1191/1191 合格**（v0.11.7：ブラウザ内91＋画面操作1100。通常のChromiumとiPhone/Safari同様の条件の両方）
 - 「プロジェクトAを削除・復元・完全削除してもBのデータは1件も変わらない」ことを自動テストで確認
 - 開発者用の画面操作テストは tests/e2e/ にあります
 
@@ -147,7 +148,7 @@ PWA土台、IndexedDB、共通項目自動付与、変更履歴、ゴミ箱/復�
 - Sync-1：iPhoneホーム画面版のポップアップログインは実機確認済み。学校ネットワークで www.gstatic.com が開けるかは要確認。本物のFirebaseでの自動テストは開発環境ではできない
 - 7件の既存アプリは未確認（推測で登録しない）。claude.aiの公開一覧にはSTORMクラブの設計書2件・けいさんラッシュ・都道府県ベースボール・セッションタイマー等があるが、対応は未確認
 - 仕様との照合は見出し下の箇条書き単位（絶対条件・技術上の注意・AIの役割・未実装は対象外）
-- 更新時は sw.js の CACHE 版数を上げる（現在のGitHub統合版は factory-v24）
+- 更新時は sw.js の CACHE 版数を上げる（現在 factory-v29）
 
 - Sync-3：本物のFirestoreで、トランザクション・Security Rules・送信・受信・競合の解決は実機確認済み。まだ試していないのは「多数の大きい記録を一度に送る場合」と「この端末で削除した記録がクラウドで変更された競合（この端末の削除を保つ）」
 
