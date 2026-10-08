@@ -28,6 +28,9 @@ import * as N from '../js/sync/notice.js';
 import { noticeHtml } from '../js/views/noticebar.js';
 
 const TEST_DB = 'factory-test';
+// 同期の記録（登録・取り込み・Sync-3の状態・控え・お知らせの設定）もテスト専用のデータベースへ（本番の factory-sync を変えない）
+const TEST_SYNC_DB = 'factory-test-sync';
+Reg._useSyncDBForTest(TEST_SYNC_DB);
 const T = [];
 const test = (name, fn) => T.push({ name, fn });
 const assert = (c, msg) => { if (!c) throw new Error(msg); };
@@ -37,16 +40,19 @@ async function rejects(p, msg) {
   throw new Error(msg);
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// テスト用データベースの削除（v0.11.7 で修正）
+// ・削除の要求は1回だけ出し、本当に削除が終わった（success）ときに次へ進む
+// ・blocked は「ほかの接続が閉じるのを待っている」という途中経過の知らせ。要求を出し直してはいけない
+//   （v0.11.4〜0.11.6 は40ミリ秒ごとに出し直していたため、残った削除要求が後から実行され、
+//     次のテストが開いたデータベースの接続を閉じていた →「The database connection is closing」）
+// ・テスト専用（factory-test…）以外の名前は削除しない（本番の factory・factory-sync を守る）
 const delDB = name => new Promise((res, rej) => {
-  const attempt = () => {
-    const r = indexedDB.deleteDatabase(name);
-    r.onsuccess = () => res();
-    r.onerror = () => rej(r.error);
-    // iPhone/Safariでは close() 直後でも一瞬 blocked になることがある。
-    // blocked を「削除完了」とみなさず、少し待って削除をやり直す。
-    r.onblocked = () => setTimeout(attempt, 40);
-  };
-  attempt();
+  if (!/^factory-test/.test(name)) { rej(new Error(`テスト専用ではないデータベース「${name}」は削除しません`)); return; }
+  const r = indexedDB.deleteDatabase(name);
+  const timer = setTimeout(() => rej(new Error(`テスト用データベース「${name}」の削除が20秒たっても終わりません（ほかの画面でテストを開いたままの可能性があります。テストの画面を1つだけにしてやり直してください）`)), 20000);
+  r.onsuccess = () => { clearTimeout(timer); res(); };
+  r.onerror = () => { clearTimeout(timer); rej(r.error); };
+  r.onblocked = () => { /* 待つ（出し直さない） */ };
 });
 
 let db, ctx = {};
@@ -1984,6 +1990,44 @@ test('【v1範囲】自動同期（Sync-4b）・削除の同期（Sync-5）・�
   eq([...new Set(items.map(i => i.group))], ['仕様・開発', '複数端末同期', '公開・運用'], '条件のまとまり（実機確認の記録がないときは実機確認の行は出ない）');
 });
 
+test('【安定性】テスト用データベースの削除：要求は1回だけ・次に開いた接続を閉じない・本番のデータベースは削除しない', async () => {
+  const NAME = 'factory-test-del';
+  // iPhone/Safari の再現：ほかの接続が「少し遅れて」閉じる（このあいだ削除は blocked になる）
+  const slow = await new Promise((res, rej) => { const r = indexedDB.open(NAME, 1); r.onupgradeneeded = () => r.result.createObjectStore('x', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  slow.onversionchange = () => setTimeout(() => slow.close(), 150);
+  let deleteRequests = 0;
+  const orig = indexedDB.deleteDatabase.bind(indexedDB);
+  indexedDB.deleteDatabase = n => { if (n === NAME) deleteRequests++; return orig(n); };
+  try { await delDB(NAME); } finally { indexedDB.deleteDatabase = orig; }
+  eq(deleteRequests, 1, '削除の要求は1回だけ（blocked でも出し直さない）');
+  // 削除のあとに開いた接続が、残った削除要求で閉じられないこと
+  const d = await FactoryDB.open(NAME);
+  await sleep(400);
+  await d.create('ideas', { text: '削除後に開いた接続で保存できる', status: 'new' });
+  eq((await d.all('ideas')).length, 1, '削除後に開いた接続が使える');
+  d.close(); await delDB(NAME);
+  // テスト専用以外は削除しない
+  for (const n of ['factory', 'factory-sync']) await rejects(delDB(n), `本番の「${n}」を削除しようとした`);
+});
+
+test('【安定性】自動テストは本番の同期の記録（factory-sync）を使わない', async () => {
+  eq(Reg.SYNC_DB, TEST_SYNC_DB, 'テスト中の同期の記録はテスト専用のデータベース');
+  await rejects((async () => Reg._useSyncDBForTest('factory-sync'))(), '本番の名前に切り替えられた');
+  const names = indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : null;
+  if (names) assert(names.includes(TEST_SYNC_DB), 'テスト専用の同期データベースが使われていない');
+});
+
+test('【安定性】オフライン用の保存一覧（sw.js）が指すファイルがすべて存在する', async () => {
+  const sw = await fetch('../sw.js', { cache: 'no-cache' }).then(r => r.text());
+  const list = [...(sw.match(/const SHELL = \[([\s\S]*?)\];/) || [, ''])[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  assert(list.length > 20, 'sw.js の保存一覧を読めない');
+  const missing = [];
+  for (const f of list) { const r = await fetch('../' + f.replace(/^\.\//, ''), { cache: 'no-cache' }); if (!r.ok) missing.push(f); }
+  eq(missing, [], '存在しないファイルがある（1つでもあると、オフライン用の更新全体が組み込めない）');
+  const ver = ((await fetch('../js/app.js', { cache: 'no-cache' }).then(r => r.text())).match(/APP_VERSION = '([^']+)'/) || [])[1];   // 読み込むと起動処理が動くので、文字として読む
+  if (ver) assert(list.includes(`VERSION-${ver}.txt`), `今の版の印（VERSION-${ver}.txt）が保存一覧にない`);
+});
+
 // ---------------- 実行 ----------------
 async function run() {
   const results = document.getElementById('results');
@@ -1991,6 +2035,7 @@ async function run() {
   results.innerHTML = ''; summary.textContent = '実行中…';
   const details = [];
   try {
+    await delDB(TEST_SYNC_DB);   // 前回のテストの同期の記録・控えを残さない（iPhoneの容量を使い続けない）
     await delDB(TEST_DB);
     db = await FactoryDB.open(TEST_DB);
     db.actor = 'テスト担当';
@@ -2007,7 +2052,7 @@ async function run() {
     row.querySelector('.name').textContent = t.name;
     row.querySelector('.err').textContent = error;
   }
-  try { db.close(); await delDB(TEST_DB); } catch {}
+  try { db.close(); await delDB(TEST_DB); await delDB(TEST_SYNC_DB); } catch {}
   const passed = details.filter(d => d.ok).length;
   const run = { runAt: new Date().toISOString(), total: details.length, passed, failed: details.length - passed, details, userAgent: navigator.userAgent };
   summary.textContent = run.failed ? `❌ ${run.failed}件 不合格（合格 ${passed} / ${run.total}）` : `✅ 全${run.total}項目 合格`;
