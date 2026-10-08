@@ -25,7 +25,9 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
   const seeded = projects.filter(p => p.seedKey && p.seedKey !== 'factory');
   const unknown = seeded.filter(p => !p.origin || p.origin === 'unknown');
   if (seeded.length) items.push({ group: '仕様・開発', label: '7案件の既存アプリ有無の確認', ok: !unknown.length, detail: unknown.length ? `未確認 ${unknown.length}件：${unknown.map(p => p.name).join('、')}` : 'すべて確認済み', how: '各プロジェクトの「既存アプリ」タブで「既存アプリあり（取込待ち）」か「既存アプリなし（新しく作る）」を選んでください。既存アプリのURL・コードは、あなたが渡したものだけ登録します' });
-  for (const d of devices) items.push({ group: '実機確認', label: `${d.device} の実機確認`, ok: d.status === 'pass', detail: `${label(m, 'deviceCheckStatuses', d.status || 'unchecked')}${d.checkedAt ? `（${d.checkedAt}）` : ''}${d.result ? `：${d.result}` : ''}`, how: `${d.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
+  // 2026-10-08 方針変更：v1.0の実機確認は iPhone と学校Windows PC を対象とし、自宅PCは完成条件に含めない。
+  const v1Devices = devices.filter(d => !/^自宅PC(?:$|[（(])/.test(String(d.device || '').trim()));
+  for (const d of v1Devices) items.push({ group: '実機確認', label: `${d.device} の実機確認`, ok: d.status === 'pass', detail: `${label(m, 'deviceCheckStatuses', d.status || 'unchecked')}${d.checkedAt ? `（${d.checkedAt}）` : ''}${d.result ? `：${d.result}` : ''}`, how: `${d.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
   const pubOk = publish.some(x => x.access === 'ok');
   const blocked = publish.some(x => x.access === 'school_blocked');
   items.push({ group: '公開・運用', label: '公開（GitHub Pages）の確認', ok: pubOk, detail: pubOk ? 'アクセスできることを確認済み' : publish.length ? '記録はありますが、まだ「アクセスできた」がありません' : '未記録', how: 'docs/公開手順.md の手順で公開し、下の「公開確認」に記録してください' });
