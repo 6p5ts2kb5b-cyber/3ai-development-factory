@@ -106,9 +106,13 @@ async function scenario(label, ctxOpts) {
   check(L('取り込む内容：件数（仕様書・要望・変更履歴・その他・合計）と全件確認'), await waitText(page, '#im-cloud', 'プロジェクト', '8件', '仕様書', '要望', '変更履歴', 'その他', '合計', `${reg.total}件`, `全${reg.total}件の内容を確認しました`));
   check(L('この端末の今のデータ：空ではない・置き換わると表示'), await waitText(page, '#im-local', 'データがあります', '置き換わります', '自動では置き換えません'));
   check(L('バックアップと切り替えのチェックがそろうまで取り込めない'), await page.isDisabled('#im-go') && await waitText(page, '#im-why', '端末内の控え', 'クラウドのデータに切り替える'));
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#im-backup-btn')]);
-  check(L('取り込み前にこの端末のバックアップファイルを保存'), /^factory-preimport-\d{8}-\d{4}\.json$/.test(dl.suggestedFilename()), dl.suggestedFilename());
-  await waitText(page, '#im-backup', '読み直しを確認しました');
+  // v0.9.x〜：iPhoneのファイル表示から戻っても状態が残るよう、①端末内の控え → ②バックアップファイルの保存 の2段階
+  await page.click('#im-backup-btn');
+  check(L('① 端末内の控えを作って読み直す'), await page.waitForSelector('#im-save-file').then(() => true).catch(() => false));
+  check(L('控えだけでは取り込めない（ファイルの保存が必要）'), await page.isDisabled('#im-go') && await waitText(page, '#im-why', 'バックアップファイルの保存'));
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#im-save-file')]);
+  check(L('② 取り込み前にこの端末のバックアップファイルを保存'), /^factory-preimport-\d{8}-\d{4}\.json$/.test(dl.suggestedFilename()), dl.suggestedFilename());
+  check(L('保存すると「バックアップしました」のチェックが出る（控えは読み直し済み）'), await page.waitForSelector('#im-file-ok', { timeout: 5000 }).then(() => true).catch(() => false) && await waitText(page, '#im-backup', '読み直しを確認しました'));
   await page.check('#im-file-ok');
   check(L('「バックアップしました」だけでは取り込めない（切り替えのチェックが必要）'), await page.isDisabled('#im-go'));
   await page.check('#im-switch');
