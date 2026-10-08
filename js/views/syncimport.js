@@ -146,6 +146,7 @@ export async function syncImportView(ctx, view) {
     st.fileSaved = true; st.fileConfirmed = false;
     saveWizard({ snapshotId: st.snapshot.id, fileSaved: true, fileName: st.fileName, fileConfirmed: false });
     downloadText(st.fileName, JSON.stringify(st.exp, null, 2), 'application/json');
+    render();   // v0.11.7：保存したら「バックアップしました」のチェックを表示（PCでは画面が読み込み直されないため）
   };
 
   const doImport = async () => {
