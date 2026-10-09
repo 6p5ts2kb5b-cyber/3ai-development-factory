@@ -23,7 +23,7 @@ import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
 import { syncImportView } from './views/syncimport.js?v=0901';
 import { fillNotice } from './views/noticebar.js';
-export const APP_VERSION = '0.11.7';
+export const APP_VERSION = '0.11.8';
 const view = document.getElementById('view');
 
 let db, master, handoff;
@@ -104,11 +104,15 @@ async function route({ keepScroll = false } = {}) {
   const my = ++routeSeq;
   try { await fn(); } catch (e) { if (my === routeSeq) view.innerHTML = errorHtml(e); }
   // 画面を続けて切り替えたとき、前の画面の表示が後から上書きしてしまった場合は、今の画面を表示し直す（iPhoneホーム画面版での安定化）
-  if (my !== routeSeq) { if (!rerouting) { rerouting = true; queueMicrotask(() => { rerouting = false; route({ keepScroll: true }); }); } return; }
+  // v0.11.8：新しい切り替えがまだ途中なら何もしない（その表示が後から上書きする）。新しい方が先に終わっていた場合だけ、1回表示し直す。
+  //   （以前は途中かどうかを見ずに表示し直していたため、切り替えが2つ重なると互いに表示し直しを続け、画面が描き直され続けていた
+  //     → 押したボタンがすぐ消えて「編集画面が開かない」）
+  if (my !== routeSeq) { if (doneSeq === routeSeq && !rerouting) { rerouting = true; queueMicrotask(() => { rerouting = false; route({ keepScroll: true }); }); } return; }
+  doneSeq = my;
   window.scrollTo(0, keepScroll ? y : 0);
   if (noticeStarted) fillNotice(ctx);   // Sync-4a：ホーム・同期の画面ならお知らせを表示（クラウドを読むのは10分に1回まで）
 }
-let routeSeq = 0, rerouting = false, noticeStarted = false;
+let routeSeq = 0, doneSeq = 0, rerouting = false, noticeStarted = false;
 function notFound() { view.innerHTML = `<div class="card"><h1>ページが見つかりません</h1><a class="btn" href="#/">ホームへ戻る</a></div>`; }
 
 async function storageInfo() {
