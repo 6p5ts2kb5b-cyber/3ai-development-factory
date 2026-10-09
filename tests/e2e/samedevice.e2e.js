@@ -61,9 +61,24 @@ async function scenario(label, opts) {
   check(L('解除すると元どおり（「学校Windows PC」は未確認に戻る）'), st.items.some(([t, ok]) => t === '学校Windows PC の実機確認' && !ok));
   const renders = await page.evaluate(() => new Promise(res => { let k = 0; const mo = new MutationObserver(ms => { k += ms.filter(m => m.target.id === 'view').length; }); mo.observe(document.getElementById('view'), { childList: true }); setTimeout(() => { mo.disconnect(); res(k); }, 2000); }));
   check(L('描き直しが続かない'), renders <= 1, `${renders}回`);
+  // v0.11.10：編集画面で保存して確認日が入った「未確認」の記録でも、提案ボタンが出て、まとめると合格になる
+  await dbEval(page, `await db.update('checks', a.school, { checkedAt: '2026-10-09', sameAs: null }, {}); await db.update('checks', a.dup, { checkedAt: '2026-10-09' }, {});`, ids);
+  await page.goto(BASE + '#/settings'); await page.goto(BASE + '#/v1'); await page.waitForSelector('#dev-card'); await page.waitForTimeout(300);
+  st = await v1State(page);
+  check(L('確認日が入った未確認：まとめる前は未確認のまま・まとめ方を表示'), st.items.some(([t, ok, txt]) => t === '学校Windows PC の実機確認' && !ok && txt.includes('同じ端末としてまとめる')));
+  check(L('確認日が入った未確認にも「同じ端末としてまとめる」が出る'), !!(await page.$(`[data-same="${ids.school}"]`)));
+  // 編集画面の「同じ端末の記録」で選んで保存
+  await page.click(`[data-dev="${ids.school}"]`); await page.waitForSelector('.modal select[name=sameAs]');
+  await page.selectOption('.modal select[name=sameAs]', ids.surface); await page.click('.modal button.primary');
+  await page.waitForSelector('text=保存しました'); await page.waitForTimeout(400);
+  st = await v1State(page);
+  check(L('編集画面で同じ端末を選んで保存すると、学校の端末は合格（確認日が入っていても）'), st.items.filter(([t]) => t.includes('学校Windows PC')).length === 1 && st.items.some(([t, ok]) => t.includes('学校Windows PC') && ok), JSON.stringify(st.items.map(x => [x[0], x[1]])));
+  const after2 = await dbEval(page, `return { surface: JSON.stringify(await db.get('checks', a.surface)), school: await db.get('checks', a.school), total: (await db.all('checks')).length };`, ids);
+  check(L('合格の記録は変わらない・学校の記録は未確認のまま・削除しない'), after2.surface === ids.surfaceJson && after2.school.status === 'unchecked' && after2.total === ids.total);
   check(L('横はみ出しなし'), !(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)));
   // 実機確認の欄の中の文字・ボタンが欄の外にはみ出さない（まとめた状態でも確認）
-  await page.click(`[data-same="${ids.school}"]`); await page.click('.modal [data-a="1"]'); await page.waitForSelector('text=同じ端末としてまとめました'); await page.waitForTimeout(300);
+  // （直前の確認で、すでに同じ端末としてまとめた状態）
+  await page.waitForSelector(`[data-unsame="${ids.school}"]`);
   check(L('まとめた状態でも、実機確認の欄の中身がはみ出さない'), await page.evaluate(() => { const card = document.querySelector('#dev-card').getBoundingClientRect(); return [...document.querySelectorAll('#dev-card *')].every(e => { const r = e.getBoundingClientRect(); return !r.width || r.right <= card.right + 1; }) && document.documentElement.scrollWidth <= innerWidth + 1; }));
   check(L('JavaScriptエラーなし'), errors.length === 0, errors.join(' | '));
   await browser.close();
