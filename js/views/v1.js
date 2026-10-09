@@ -2,7 +2,7 @@
 import { esc, fmtDate } from '../ui.js';
 import { label } from '../master.js';
 import { FACTORY_ID } from '../db.js';
-import { checksHtml, bindChecks } from './checks.js';
+import { checksHtml, bindChecks, groupDeviceChecks } from './checks.js';
 import { seedBannerHtml, bindSeed } from '../seed.js';
 
 // v1完成の項目を計算（画面に依存しない部分）
@@ -27,7 +27,14 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
   if (seeded.length) items.push({ group: '仕様・開発', label: '7案件の既存アプリ有無の確認', ok: !unknown.length, detail: unknown.length ? `未確認 ${unknown.length}件：${unknown.map(p => p.name).join('、')}` : 'すべて確認済み', how: '各プロジェクトの「既存アプリ」タブで「既存アプリあり（取込待ち）」か「既存アプリなし（新しく作る）」を選んでください。既存アプリのURL・コードは、あなたが渡したものだけ登録します' });
   // 2026-10-08 方針変更：v1.0の実機確認は iPhone と学校Windows PC を対象とし、自宅PCは完成条件に含めない。
   const v1Devices = devices.filter(d => !/^自宅PC(?:$|[（(])/.test(String(d.device || '').trim()));
-  for (const d of v1Devices) items.push({ group: '実機確認', label: `${d.device} の実機確認`, ok: d.status === 'pass', detail: `${label(m, 'deviceCheckStatuses', d.status || 'unchecked')}${d.checkedAt ? `（${d.checkedAt}）` : ''}${d.result ? `：${d.result}` : ''}`, how: `${d.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
+  // 2026-10-09（v0.11.8）：同じ端末の記録は1項目にまとめる。記入のある記録がすべて「合格」なら合格。
+  //   同期でそろった「未記入の欄」は合格の証拠にも不合格の理由にもしない（記入のある記録が1件も無ければ未確認のまま）
+  for (const g of groupDeviceChecks(v1Devices)) {
+    const k = g.keeper || {};
+    const note = g.extraBlanks.length ? `（同じ端末の未記入の欄 ${g.extraBlanks.length}件は判定に入れていません）` : '';
+    const others = g.evidence.length > 1 ? `（記入のある記録 ${g.evidence.length}件：${g.evidence.map(d => label(m, 'deviceCheckStatuses', d.status || 'unchecked')).join('・')}）` : '';
+    items.push({ group: '実機確認', label: `${g.device} の実機確認`, ok: g.ok, detail: `${label(m, 'deviceCheckStatuses', g.status)}${g.evidence.length && k.checkedAt ? `（${k.checkedAt}）` : ''}${g.evidence.length && k.result ? `：${k.result}` : ''}${others}${note}`, how: g.evidence.some(d => d.status !== 'pass') ? `${g.device}の記録に「合格」以外があります。確認し直して、下の「実機確認」でその記録を更新してください` : `${g.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
+  }
   const pubOk = publish.some(x => x.access === 'ok');
   const blocked = publish.some(x => x.access === 'school_blocked');
   items.push({ group: '公開・運用', label: '公開（GitHub Pages）の確認', ok: pubOk, detail: pubOk ? 'アクセスできることを確認済み' : publish.length ? '記録はありますが、まだ「アクセスできた」がありません' : '未記録', how: 'docs/公開手順.md の手順で公開し、下の「公開確認」に記録してください' });
