@@ -2108,6 +2108,26 @@ test('【同じ端末のまとめ】まとめても記録は削除・変更し�
   await db.remove('checks', surface.id); await db.remove('checks', school.id);
 });
 
+test('【同じ端末のまとめ】確認日が入った「未確認」の記録でも、利用者がまとめれば合格の記録を参照する（v0.11.10）', async () => {
+  const surface = { id: 'f', device: '学校Windows PC（Surface・Edge）', status: 'pass', checkedAt: '2026-10-05', result: '自動テスト 全項目合格' };
+  // 編集画面で保存すると確認日が入る（状態は未確認のまま）
+  const school = { id: 's', device: '学校Windows PC', order: 2, status: 'unchecked', checkedAt: '2026-10-09', result: '' };
+  const m = await loadMaster(db), h = await loadHandoff();
+  const v1dev = devs => v1Items({ handoff: h, projects: [], devices: devs, publish: [], lastTest: null, lastBackup: null }, m).filter(i => i.group === '実機確認');
+  // まとめる前：未確認のまま・提案ボタンは出る・何をすればいいかを表示
+  const before = v1dev([school, surface]).find(i => i.label.startsWith('学校Windows PC の'));
+  eq([before.ok, sameDeviceSuggestions([school, surface]).map(x => x.to.id)], [false, ['f']], 'まとめる前は未確認・確認日が入っていても提案は出る');
+  assert(before.how.includes('同じ端末としてまとめる') && before.how.includes('2026-10-05'), 'まとめ方を表示');
+  // 編集画面の「同じ端末の記録」で選んで保存した状態
+  const linked = v1dev([{ ...school, sameAs: 'f' }, surface]);
+  eq(linked.map(i => [i.label, i.ok]), [['学校Windows PC（Surface・Edge） の実機確認', true]], 'まとめた後は合格の記録を参照して合格');
+  // 未確認の記録は合格の証拠にも不合格の理由にもしない。不合格・再確認は完成を止める
+  eq(groupDeviceChecks([{ ...school, sameAs: 'f', result: 'メモだけ' }, surface])[0].ok, true, '未確認（メモ・確認日あり）は判定を止めない');
+  eq(groupDeviceChecks([{ ...school, sameAs: 'f', status: 'recheck' }, surface])[0].ok, false, '再確認が必要な記録があれば完成にしない');
+  eq(groupDeviceChecks([{ ...school, status: 'unchecked', checkedAt: '2026-10-09' }])[0].ok, false, '未確認だけでは合格にしない');
+  eq(groupDeviceChecks([{ ...school, sameAs: 'f' }, { ...surface, status: 'unchecked' }])[0].ok, false, '相手も未確認なら合格にしない');
+});
+
 // ---------------- 実行 ----------------
 async function run() {
   const results = document.getElementById('results');
