@@ -122,3 +122,7 @@ p, li, dd { text-wrap: pretty; }
 @media (min-width: 960px) {
   body { padding-bottom: 0; }
 }
+
+/* v0.11.8：実機確認の重複（未記入の欄） */
+#dev-card li.dev-dup .row-btn { opacity: .72; }
+#dev-card li .btn.small[data-dedupe] { align-self: center; }
