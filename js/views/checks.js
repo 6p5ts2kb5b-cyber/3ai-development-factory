@@ -14,6 +14,9 @@ const ACC_CLASS = { ok: 'ok', school_blocked: 'warn', not_published: 'ng', error
 // ・「重複として整理」した欄（duplicateOf あり）は判定に入れない。削除はしない（元に戻せる・ほかの端末にも同期される）
 export const deviceKey = name => String(name || '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 export const isBlankDeviceCheck = d => (d.status || 'unchecked') === 'unchecked' && !d.checkedAt && !String(d.result || '').trim();
+// 判定の材料になる記録＝確認の結果（合格・不合格・再確認など）が入った記録。v0.11.10：状態が「未確認」の記録は、
+//   編集画面で保存して確認日が入っていても「確認していない」ので、合格の証拠にも不合格の理由にもしない
+export const hasDeviceResult = d => (d.status || 'unchecked') !== 'unchecked';
 const STATUS_RANK = { fail: 4, recheck: 3, unchecked: 1, pass: 0 };
 /**
  * 端末ごとにまとめる（画面に依存しない・自動テストの対象）
@@ -43,15 +46,16 @@ export function groupDeviceChecks(devices = []) {
     const all = [...g0.records, ...g0.marked];
     const names = [...new Set(all.map(d => String(d.device || '').trim()))];
     const g = { ...g0, names, linked: all.filter(d => d.sameAs != null && idx.has(d.sameAs)) };
-    const evidence = g.records.filter(d => !isBlankDeviceCheck(d));
+    const evidence = g.records.filter(hasDeviceResult);
     const blanks = g.records.filter(isBlankDeviceCheck);
+    const pending = g.records.filter(d => !hasDeviceResult(d));   // 未確認の記録（確認日などの記入があっても未確認）
     const ok = evidence.length > 0 && evidence.every(d => d.status === 'pass');
     const status = evidence.length ? evidence.map(d => d.status || 'unchecked').sort((a, b) => (STATUS_RANK[b] ?? 2) - (STATUS_RANK[a] ?? 2))[0] : 'unchecked';
-    const keeper = evidence.find(d => d.status === 'pass') || evidence[0] || blanks[0] || g.marked[0] || null;
+    const keeper = evidence.find(d => d.status === 'pass') || evidence[0] || pending[0] || g.marked[0] || null;
     // 整理できる重複：記入のある記録があれば未記入の欄すべて、なければ2件目以降の未記入の欄
     const extraBlanks = evidence.length ? blanks : blanks.slice(1);
     // 表示する端末名：合格などの記入がある記録の名前（無ければ最初の記録）
-    return { ...g, device: String((keeper || all[0] || {}).device || g.device).trim(), key: deviceKey((keeper || all[0] || {}).device || g.device), evidence, blanks, extraBlanks, ok, status, keeper };
+    return { ...g, device: String((keeper || all[0] || {}).device || g.device).trim(), key: deviceKey((keeper || all[0] || {}).device || g.device), evidence, blanks, pending, extraBlanks, ok, status, keeper };
   });
 }
 // まとめる候補（提案だけ。まとめるのは利用者が確認して押したときだけ）：名前の（ ）より前が同じで、まだまとめていない別の名前の記録
@@ -63,8 +67,8 @@ export function sameDeviceSuggestions(devices = []) {
   for (const d of active) {
     if (d.sameAs) continue;
     const g = groupOf.get(d.id);
-    const cand = active.find(o => o.id !== d.id && groupOf.get(o.id) !== g && deviceKey(o.device) !== deviceKey(d.device) && deviceBaseKey(o.device) === deviceBaseKey(d.device) && !isBlankDeviceCheck(o));
-    if (cand && isBlankDeviceCheck(d)) out.push({ from: d, to: cand });
+    const cand = active.find(o => o.id !== d.id && groupOf.get(o.id) !== g && deviceKey(o.device) !== deviceKey(d.device) && deviceBaseKey(o.device) === deviceBaseKey(d.device) && hasDeviceResult(o));
+    if (cand && !hasDeviceResult(d)) out.push({ from: d, to: cand });   // 未確認の記録（確認日が入っていても）に提案する
   }
   return out;
 }
