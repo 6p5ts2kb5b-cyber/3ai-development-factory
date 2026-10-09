@@ -2,7 +2,7 @@
 import { esc, fmtDate } from '../ui.js';
 import { label } from '../master.js';
 import { FACTORY_ID } from '../db.js';
-import { checksHtml, bindChecks, groupDeviceChecks, deviceKey } from './checks.js';
+import { checksHtml, bindChecks, groupDeviceChecks, deviceKey, sameDeviceSuggestions } from './checks.js';
 import { seedBannerHtml, bindSeed } from '../seed.js';
 
 // v1完成の項目を計算（画面に依存しない部分）
@@ -29,13 +29,15 @@ export function v1Items({ handoff, projects, devices, publish, lastTest, lastBac
   const v1Devices = devices.filter(d => !/^自宅PC(?:$|[（(])/.test(String(d.device || '').trim()));
   // 2026-10-09（v0.11.8）：同じ端末の記録は1項目にまとめる。記入のある記録がすべて「合格」なら合格。
   //   同期でそろった「未記入の欄」は合格の証拠にも不合格の理由にもしない（記入のある記録が1件も無ければ未確認のまま）
+  const sugg = sameDeviceSuggestions(devices);
   for (const g of groupDeviceChecks(v1Devices)) {
+    const canLink = sugg.find(s => g.records.some(d => d.id === s.from.id));
     const k = g.keeper || {};
     const note = g.extraBlanks.length ? `（同じ端末の未記入の欄 ${g.extraBlanks.length}件は判定に入れていません）` : '';
     const aliases = g.names.filter(n => deviceKey(n) !== deviceKey(g.device));
     const same = aliases.length ? `（同じ端末としてまとめた記録：${aliases.join('、')}）` : '';
     const others = g.evidence.length > 1 ? `（記入のある記録 ${g.evidence.length}件：${g.evidence.map(d => label(m, 'deviceCheckStatuses', d.status || 'unchecked')).join('・')}）` : '';
-    items.push({ group: '実機確認', label: `${g.device} の実機確認`, ok: g.ok, detail: `${label(m, 'deviceCheckStatuses', g.status)}${g.evidence.length && k.checkedAt ? `（${k.checkedAt}）` : ''}${g.evidence.length && k.result ? `：${k.result}` : ''}${others}${note}${same}`, how: g.evidence.some(d => d.status !== 'pass') ? `${g.device}の記録に「合格」以外があります。確認し直して、下の「実機確認」でその記録を更新してください` : `${g.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
+    items.push({ group: '実機確認', label: `${g.device} の実機確認`, ok: g.ok, detail: `${label(m, 'deviceCheckStatuses', g.status)}${g.evidence.length && k.checkedAt ? `（${k.checkedAt}）` : ''}${g.evidence.length && k.result ? `：${k.result}` : ''}${others}${note}${same}`, how: canLink && !g.ok ? `「${canLink.to.device}」（${label(m, 'deviceCheckStatuses', canLink.to.status || 'unchecked')}${canLink.to.checkedAt ? `・${canLink.to.checkedAt}` : ''}）と同じ端末なら、下の「実機確認」で「同じ端末としてまとめる」を押してください（押すまでは別の端末として扱います）` : g.evidence.some(d => d.status !== 'pass') ? `${g.device}の記録に「合格」以外があります。確認し直して、下の「実機確認」でその記録を更新してください` : `${g.device}でFactoryを開き、「自動テストを実行する」で全項目合格を確認して、下の「実機確認」で「合格」にしてください` });
   }
   const pubOk = publish.some(x => x.access === 'ok');
   const blocked = publish.some(x => x.access === 'school_blocked');
