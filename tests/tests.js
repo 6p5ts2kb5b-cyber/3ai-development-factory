@@ -15,6 +15,7 @@ import { completionItems } from '../js/logic.js';
 import { FACTORY_ID } from '../js/db.js';
 import { projectHandoffMarkdown, collectHandoff } from '../js/views/phandoff.js';
 import { v1Items, v1LaterItems } from '../js/views/v1.js';
+import { groupDeviceChecks, isBlankDeviceCheck } from '../js/views/checks.js';
 import { PROJECT_CHILD_STORES } from '../js/db.js';
 import { loadInitialProjects, seedInitialProjects, seedStatus, seededCount } from '../js/seed.js';
 import { specItems, coverageSummary } from '../js/logic.js';
@@ -2026,6 +2027,44 @@ test('【安定性】オフライン用の保存一覧（sw.js）が指すファ
   eq(missing, [], '存在しないファイルがある（1つでもあると、オフライン用の更新全体が組み込めない）');
   const ver = ((await fetch('../js/app.js', { cache: 'no-cache' }).then(r => r.text())).match(/APP_VERSION = '([^']+)'/) || [])[1];   // 読み込むと起動処理が動くので、文字として読む
   if (ver) assert(list.includes(`VERSION-${ver}.txt`), `今の版の印（VERSION-${ver}.txt）が保存一覧にない`);
+});
+
+test('【実機確認の重複】同じ端末の記録をまとめる：未記入の欄は合格にも不合格にもしない・記入のある「合格」以外があれば完成にしない', async () => {
+  const blank = (id, device, order) => ({ id, device, order, status: 'unchecked', checkedAt: null, result: '' });
+  const g = groupDeviceChecks([
+    { id: 'a', device: 'iPhone', status: 'pass', checkedAt: '2026-10-08', result: '91/91' }, blank('b', 'iPhone'),
+    blank('c', '学校Windows PC'), blank('d', '学校Windows PC'),
+    { id: 'e', device: 'ｉＰｈｏｎｅ ', status: 'unchecked', checkedAt: null, result: '', duplicateOf: 'a' },
+  ]);
+  const ip = g.find(x => x.device === 'iPhone'), sc = g.find(x => x.device === '学校Windows PC');
+  eq([g.length, ip.ok, ip.keeper.id, ip.extraBlanks.map(x => x.id), ip.marked.map(x => x.id)], [2, true, 'a', ['b'], ['e']], 'iPhone：合格＋未記入の欄 → 合格（名前の全角・空白の違いも同じ端末）');
+  eq([sc.ok, sc.extraBlanks.map(x => x.id)], [false, ['d']], '学校Windows PC：未記入だけ → 未確認のまま（2件目は整理できる重複）');
+  eq(groupDeviceChecks([{ id: 'a', device: 'iPhone', status: 'pass', checkedAt: '2026-10-08' }, { id: 'f', device: 'iPhone', status: 'fail', checkedAt: '2026-10-09', result: '1件不合格' }])[0].ok, false, '合格と不合格がある → 完成にしない（偽って合格にしない）');
+  eq(groupDeviceChecks([{ id: 'a', device: 'iPhone', status: 'unchecked', checkedAt: '2026-10-08' }])[0].ok, false, '確認日だけ記入した「未確認」は合格にしない');
+  eq([isBlankDeviceCheck({ status: 'unchecked' }), isBlankDeviceCheck({ status: 'pass' }), isBlankDeviceCheck({ status: 'unchecked', result: 'メモ' })], [true, false, false], '未記入の欄の判定');
+  // v1完成判定：端末ごとに1項目（自宅PCは対象外のまま）
+  const m = await loadMaster(db), h = await loadHandoff();
+  const items = v1Items({ handoff: h, projects: [], devices: [{ id: 'a', device: 'iPhone', status: 'pass', checkedAt: '2026-10-08', result: '91/91' }, blank('b', 'iPhone'), blank('c', '学校Windows PC'), blank('d', '学校Windows PC'), blank('h', '自宅PC')], publish: [], lastTest: null, lastBackup: null }, m).filter(i => i.group === '実機確認');
+  eq(items.map(i => [i.label, i.ok]), [['iPhone の実機確認', true], ['学校Windows PC の実機確認', false]], '重複があっても端末ごとに1項目・合格は合格のまま');
+  assert(items[0].detail.includes('91/91') && items[0].detail.includes('未記入の欄 1件は判定に入れていません'), '判定に入れていない欄を表示');
+});
+
+test('【実機確認の重複】「重複として整理」は削除しない：合格の記録は変わらず、元に戻せる', async () => {
+  const { FACTORY_ID } = await import('../js/db.js');
+  const pass = await db.create('checks', { projectId: FACTORY_ID, kind: 'device', device: 'テスト端末', order: 9, status: 'pass', checkedAt: '2026-10-08', result: '91/91' });
+  const dup = await db.create('checks', { projectId: FACTORY_ID, kind: 'device', device: 'テスト端末', order: 9, status: 'unchecked', checkedAt: null, result: '' });
+  const passBefore = JSON.stringify(await db.get('checks', pass.id));
+  await db.update('checks', dup.id, { duplicateOf: pass.id }, { reason: '未記入の重複した欄を整理' });
+  const list = (await db.checksOf(FACTORY_ID, 'device')).filter(d => d.device === 'テスト端末');
+  eq([list.length, JSON.stringify(await db.get('checks', pass.id)) === passBefore, (await db.get('checks', dup.id)).duplicateOf], [2, true, pass.id], '記録は2件とも残る・合格の記録は変わらない');
+  eq(groupDeviceChecks(list)[0].records.map(d => d.id), [pass.id], '整理した欄は判定から外れる');
+  await db.update('checks', dup.id, { duplicateOf: null }, { reason: '元に戻す' });
+  eq(groupDeviceChecks((await db.checksOf(FACTORY_ID, 'device')).filter(d => d.device === 'テスト端末'))[0].extraBlanks.map(d => d.id), [dup.id], '元に戻せる');
+  // 判定・整理の部品にデータを削除する命令がない
+  const code = await fetch('../js/views/checks.js', { cache: 'no-cache' }).then(r => r.text());
+  const dedupePart = code.slice(code.indexOf('重複として整理（削除しない'), code.indexOf('function deviceForm'));
+  assert(dedupePart.length > 100 && !/\.remove\(|\.purge\(|deleteDoc/.test(dedupePart), '重複の整理に削除の命令がある');
+  await db.remove('checks', pass.id); await db.remove('checks', dup.id);
 });
 
 // ---------------- 実行 ----------------
