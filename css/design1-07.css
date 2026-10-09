@@ -126,3 +126,7 @@ p, li, dd { text-wrap: pretty; }
 /* v0.11.8：実機確認の重複（未記入の欄） */
 #dev-card li.dev-dup .row-btn { opacity: .72; }
 #dev-card li .btn.small[data-dedupe] { align-self: center; }
+/* v0.11.9：同じ端末のまとめ（長い端末名が入るので、折り返して1行に収める） */
+#dev-card li .btn.small[data-same], #dev-card li .btn.small[data-unsame] { white-space: normal; text-align: left; flex: 1 1 100%; justify-content: flex-start; }
+@media (min-width: 720px) { #dev-card li .btn.small[data-same], #dev-card li .btn.small[data-unsame] { flex: 0 1 auto; } }
+#dev-card .row-btn .badge { white-space: normal; max-width: 100%; }

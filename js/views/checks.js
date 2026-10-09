@@ -20,14 +20,29 @@ const STATUS_RANK = { fail: 4, recheck: 3, unchecked: 1, pass: 0 };
  * @returns [{ key, device, records（整理していないもの）, marked（重複として整理したもの）, evidence（記入のある記録）, blanks（未記入の欄）, extraBlanks（整理できる重複）, ok, status, keeper }]
  *   ok：記入のある記録がすべて「合格」で、1件以上あるとき。未記入の欄は、記入のある記録があるときは判定に入れない（合格を作るものではない）
  */
+// v0.11.9：名前が違っても、利用者が「同じ端末としてまとめる」を確認して押した記録（sameAs に相手の記録のID）は同じ端末として扱う。
+//   名前が似ているだけでは自動でまとめない（推測で合格にしない）。まとめても、合格になるのは相手に「合格」の記録があるときだけ
+export const deviceBaseKey = name => deviceKey(String(name || '').replace(/[（(].*$/, ''));
 export function groupDeviceChecks(devices = []) {
+  // 同じ名前どうし・sameAs でつないだ記録どうしを1つのまとまりにする（つなぎ先が無い・自分自身のときは無視）
+  // 内部では記録の位置（番号）で扱う（IDの無い記録どうしを同じものとみなさないため）
+  const parent = devices.map((_, i) => i);
+  const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const unite = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; };
+  const idx = new Map(devices.map((d, i) => [d.id, i]).filter(([id]) => id != null));
+  const byKey = new Map();
+  devices.forEach((d, i) => { const k = deviceKey(d.device); if (byKey.has(k)) unite(byKey.get(k), i); else byKey.set(k, i); });
+  devices.forEach((d, i) => { if (d.sameAs != null && d.sameAs !== d.id && idx.has(d.sameAs)) unite(idx.get(d.sameAs), i); });
   const map = new Map();
-  for (const d of devices) {
-    const k = deviceKey(d.device);
-    if (!map.has(k)) map.set(k, { key: k, device: String(d.device || '').trim(), records: [], marked: [] });
-    (d.duplicateOf ? map.get(k).marked : map.get(k).records).push(d);
+  for (const [i, d] of devices.entries()) {
+    const r = find(i);
+    if (!map.has(r)) map.set(r, { key: deviceKey(d.device), device: String(d.device || '').trim(), records: [], marked: [] });
+    (d.duplicateOf ? map.get(r).marked : map.get(r).records).push(d);
   }
-  return [...map.values()].map(g => {
+  return [...map.values()].map(g0 => {
+    const all = [...g0.records, ...g0.marked];
+    const names = [...new Set(all.map(d => String(d.device || '').trim()))];
+    const g = { ...g0, names, linked: all.filter(d => d.sameAs != null && idx.has(d.sameAs)) };
     const evidence = g.records.filter(d => !isBlankDeviceCheck(d));
     const blanks = g.records.filter(isBlankDeviceCheck);
     const ok = evidence.length > 0 && evidence.every(d => d.status === 'pass');
@@ -35,8 +50,23 @@ export function groupDeviceChecks(devices = []) {
     const keeper = evidence.find(d => d.status === 'pass') || evidence[0] || blanks[0] || g.marked[0] || null;
     // 整理できる重複：記入のある記録があれば未記入の欄すべて、なければ2件目以降の未記入の欄
     const extraBlanks = evidence.length ? blanks : blanks.slice(1);
-    return { ...g, evidence, blanks, extraBlanks, ok, status, keeper };
+    // 表示する端末名：合格などの記入がある記録の名前（無ければ最初の記録）
+    return { ...g, device: String((keeper || all[0] || {}).device || g.device).trim(), key: deviceKey((keeper || all[0] || {}).device || g.device), evidence, blanks, extraBlanks, ok, status, keeper };
   });
+}
+// まとめる候補（提案だけ。まとめるのは利用者が確認して押したときだけ）：名前の（ ）より前が同じで、まだまとめていない別の名前の記録
+export function sameDeviceSuggestions(devices = []) {
+  const active = devices.filter(d => !d.duplicateOf);
+  const groups = groupDeviceChecks(active);
+  const groupOf = new Map(groups.flatMap(g => g.records.map(d => [d.id, g])));
+  const out = [];
+  for (const d of active) {
+    if (d.sameAs) continue;
+    const g = groupOf.get(d.id);
+    const cand = active.find(o => o.id !== d.id && groupOf.get(o.id) !== g && deviceKey(o.device) !== deviceKey(d.device) && deviceBaseKey(o.device) === deviceBaseKey(d.device) && !isBlankDeviceCheck(o));
+    if (cand && isBlankDeviceCheck(d)) out.push({ from: d, to: cand });
+  }
+  return out;
 }
 
 export function checksHtml(m, devices, publish) {
@@ -45,6 +75,8 @@ export function checksHtml(m, devices, publish) {
   const keeperOf = new Map(groups.flatMap(g => g.extraBlanks.map(d => [d.id, g.keeper?.id])));
   const active = devices.filter(d => !d.duplicateOf), marked = devices.filter(d => d.duplicateOf);
   const dupNames = groups.filter(g => g.extraBlanks.length).map(g => g.device);
+  const byId = new Map(devices.map(d => [d.id, d]));
+  const sugg = new Map(sameDeviceSuggestions(devices).map(s => [s.from.id, s.to]));
   return `<section class="card" id="dev-card">
       <div class="spec-head"><h2>実機確認</h2><button class="btn small primary" data-chk="add-dev">＋ 端末</button></div>
       <p class="muted">実際の端末で動くか確認した結果を記録します。すべて「合格」になると「完成」の条件を満たします。</p>
@@ -53,7 +85,7 @@ export function checksHtml(m, devices, publish) {
         <span class="t-title">${esc(d.device)}</span>
         <span class="t-meta"><span class="badge ${DEV_CLASS[d.status || 'unchecked']}">${esc(label(m, 'deviceCheckStatuses', d.status || 'unchecked'))}</span>
           ${d.checkedAt ? `<span>確認日 ${esc(d.checkedAt)}</span>` : ''}${d.scope ? `<span>${esc(d.scope)}</span>` : ''}</span>
-        ${d.result ? `<span class="t-res">結果：${esc(d.result)}</span>` : ''}${d.memo ? `<span class="muted">${esc(d.memo)}</span>` : ''}${extra.has(d.id) ? '<span class="badge warn">重複（未記入）</span>' : ''}</button>${extra.has(d.id) ? `<button class="btn small" data-dedupe="${esc(d.id)}" data-keeper="${esc(keeperOf.get(d.id) || '')}">重複として整理</button>` : ''}</li>`).join('')}</ul>`
+        ${d.result ? `<span class="t-res">結果：${esc(d.result)}</span>` : ''}${d.memo ? `<span class="muted">${esc(d.memo)}</span>` : ''}${extra.has(d.id) ? '<span class="badge warn">重複（未記入）</span>' : ''}${d.sameAs && byId.has(d.sameAs) ? `<span class="badge">「${esc(byId.get(d.sameAs).device)}」と同じ端末</span>` : ''}</button>${sugg.has(d.id) ? `<button class="btn small" data-same="${esc(d.id)}" data-to="${esc(sugg.get(d.id).id)}">「${esc(sugg.get(d.id).device)}」と同じ端末としてまとめる</button>` : ''}${d.sameAs && byId.has(d.sameAs) ? `<button class="btn small" data-unsame="${esc(d.id)}">まとめを解除</button>` : ''}${extra.has(d.id) && !sugg.has(d.id) ? `<button class="btn small" data-dedupe="${esc(d.id)}" data-keeper="${esc(keeperOf.get(d.id) || '')}">重複として整理</button>` : ''}</li>`).join('')}</ul>`
         : marked.length ? '' : `<p class="muted">端末が登録されていません。</p><button class="btn" data-chk="add-default">iPhone・自宅PC・学校Windows PC を登録</button>`}
       ${marked.length ? `<details class="ex-box" id="dev-marked"><summary>重複として整理した欄（${marked.length}件・判定に入れていません）</summary><ul class="list">${marked.map(d => `<li><span class="grow">${esc(d.device)} <span class="badge">${esc(label(m, 'deviceCheckStatuses', d.status || 'unchecked'))}</span></span><button class="btn small" data-undupe="${esc(d.id)}">元に戻す</button></li>`).join('')}</ul></details>` : ''}
     </section>
@@ -83,7 +115,7 @@ export function bindChecks(root, ctx, projectId, { devices, publish }) {
     let d = devices.find(x => String(x.id) === id);
     if (!d) { try { d = await ctx.db.get('checks', id); } catch { d = null; } }
     if (!d) { toast('この記録が見つかりません（ほかの端末で整理・削除された可能性があります）。画面を開き直します'); ctx.refresh(); return; }
-    try { deviceForm(ctx, projectId, d); } catch (err) { toast(`記録を開けませんでした：${err.message || err}`); }
+    try { deviceForm(ctx, projectId, d, devices); } catch (err) { toast(`記録を開けませんでした：${err.message || err}`); }
   });
   // 重複として整理（削除しない：duplicateOf を付けて一覧と判定から外す。ほかの端末にも同期される）
   root.querySelectorAll('[data-dedupe]').forEach(b => b.onclick = async () => {
@@ -94,6 +126,20 @@ export function bindChecks(root, ctx, projectId, { devices, publish }) {
     try { await ctx.db.update('checks', d.id, { duplicateOf: b.dataset.keeper || 'duplicate' }, { reason: `実機確認（${d.device}）：未記入の重複した欄を整理` }); toast('重複として整理しました（元に戻せます）'); ctx.refresh(); }
     catch (err) { toast(`整理できませんでした：${err.message || err}`); }
   });
+  // 同じ端末としてまとめる（利用者が確認したときだけ。記録は削除・変更しない：まとめる側の記録に sameAs を付けるだけ。解除できる）
+  root.querySelectorAll('[data-same]').forEach(b => b.onclick = async () => {
+    const d = devices.find(x => String(x.id) === b.dataset.same), to = devices.find(x => String(x.id) === b.dataset.to);
+    if (!d || !to) { ctx.refresh(); return; }
+    if (!await confirmDialog({ title: '同じ端末としてまとめますか？', body: `<p>「${esc(d.device)}」と「${esc(to.device)}」が<strong>同じ端末</strong>のときだけ、まとめてください。</p><p>まとめると、完成の判定では「${esc(to.device)}」の記録（${esc(label(m, 'deviceCheckStatuses', to.status || 'unchecked'))}${to.checkedAt ? `・${esc(to.checkedAt)}` : ''}）を使います。どちらの記録も削除・変更しません。あとで「まとめを解除」できます。</p>`, ok: '同じ端末としてまとめる' })) return;
+    try { await ctx.db.update('checks', d.id, { sameAs: to.id }, { reason: `実機確認（${d.device}）：利用者の確認により「${to.device}」と同じ端末としてまとめる` }); toast('同じ端末としてまとめました（解除できます）'); ctx.refresh(); }
+    catch (err) { toast(`まとめられませんでした：${err.message || err}`); }
+  });
+  root.querySelectorAll('[data-unsame]').forEach(b => b.onclick = async () => {
+    const d = devices.find(x => String(x.id) === b.dataset.unsame);
+    if (!d) { ctx.refresh(); return; }
+    try { await ctx.db.update('checks', d.id, { sameAs: null }, { reason: `実機確認（${d.device}）：同じ端末のまとめを解除` }); toast('まとめを解除しました'); ctx.refresh(); }
+    catch (err) { toast(`解除できませんでした：${err.message || err}`); }
+  });
   root.querySelectorAll('[data-undupe]').forEach(b => b.onclick = async () => {
     const d = devices.find(x => String(x.id) === b.dataset.undupe);
     if (!d) { ctx.refresh(); return; }
@@ -103,8 +149,9 @@ export function bindChecks(root, ctx, projectId, { devices, publish }) {
   root.querySelectorAll('[data-pub]').forEach(b => b.onclick = () => publishForm(ctx, projectId, publish.find(x => x.id === b.dataset.pub)));
 }
 
-function deviceForm(ctx, projectId, d = null) {
+function deviceForm(ctx, projectId, d = null, all = []) {
   const m = ctx.master, x = d || {};
+  const others = d ? all.filter(o => o.id !== d.id && !o.duplicateOf && deviceKey(o.device) !== deviceKey(d.device)) : [];
   const md = openModal(`<h2>${d ? `実機確認：${esc(x.device)}` : '端末を追加'}</h2><form id="dvf">
     <label class="field"><span>端末</span><input type="text" name="device" maxlength="60" value="${esc(x.device || '')}" placeholder="例：iPhone 13（Safari）"></label>
     <div class="grid two">
@@ -113,6 +160,7 @@ function deviceForm(ctx, projectId, d = null) {
     </div>
     <label class="field"><span>結果</span><textarea name="result" rows="2" placeholder="例：自動テスト 全45項目合格">${esc(x.result || '')}</textarea></label>
     <label class="field"><span>メモ</span><input type="text" name="memo" value="${esc(x.memo || '')}"></label>
+    ${others.length ? `<label class="field"><span>同じ端末の記録（同じ端末だと確認できたときだけ選ぶ）</span><select name="sameAs"><option value="">選ばない（別の端末）</option>${others.map(o => `<option value="${esc(o.id)}"${x.sameAs === o.id ? ' selected' : ''}>${esc(o.device)}（${esc(label(m, 'deviceCheckStatuses', o.status || 'unchecked'))}${o.checkedAt ? `・${esc(o.checkedAt)}` : ''}）</option>`).join('')}</select><small class="muted">選ぶと、完成の判定ではまとめて扱います。どちらの記録も削除しません。</small></label>` : ''}
     <div id="dvf-err"></div>
     <div class="btns"><button type="button" class="btn" data-close>やめる</button><button class="btn primary">保存</button></div>
     ${d ? '<hr><button type="button" class="btn danger" id="dvf-del">この端末を削除（ゴミ箱へ）</button>' : ''}</form>`);
@@ -120,6 +168,7 @@ function deviceForm(ctx, projectId, d = null) {
   f.onsubmit = async e => {
     e.preventDefault();
     const data = { device: E.device.value.trim(), status: E.status.value, checkedAt: E.checkedAt.value || null, result: E.result.value.trim(), memo: E.memo.value.trim() };
+    if (E.sameAs) data.sameAs = E.sameAs.value || null;
     if (!data.device) { md.el.querySelector('#dvf-err').innerHTML = errorHtml(new Error('端末名を入力してください')); return; }
     try {
       if (d) await ctx.db.update('checks', d.id, data, { reason: `実機確認（${data.device}）：${label(m, 'deviceCheckStatuses', data.status)}` });

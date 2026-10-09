@@ -15,7 +15,7 @@ import { completionItems } from '../js/logic.js';
 import { FACTORY_ID } from '../js/db.js';
 import { projectHandoffMarkdown, collectHandoff } from '../js/views/phandoff.js';
 import { v1Items, v1LaterItems } from '../js/views/v1.js';
-import { groupDeviceChecks, isBlankDeviceCheck } from '../js/views/checks.js';
+import { groupDeviceChecks, isBlankDeviceCheck, sameDeviceSuggestions } from '../js/views/checks.js';
 import { PROJECT_CHILD_STORES } from '../js/db.js';
 import { loadInitialProjects, seedInitialProjects, seedStatus, seededCount } from '../js/seed.js';
 import { specItems, coverageSummary } from '../js/logic.js';
@@ -2065,6 +2065,47 @@ test('【実機確認の重複】「重複として整理」は削除しない�
   const dedupePart = code.slice(code.indexOf('重複として整理（削除しない'), code.indexOf('function deviceForm'));
   assert(dedupePart.length > 100 && !/\.remove\(|\.purge\(|deleteDoc/.test(dedupePart), '重複の整理に削除の命令がある');
   await db.remove('checks', pass.id); await db.remove('checks', dup.id);
+});
+
+test('【同じ端末のまとめ】名前が違う記録は自動でまとめない・利用者が「同じ端末」と確認したときだけ合格の記録を参照する', async () => {
+  const school = { id: 's', device: '学校Windows PC', order: 2, status: 'unchecked', checkedAt: null, result: '' };
+  const surface = { id: 'f', device: '学校Windows PC（Surface・Edge）', status: 'pass', checkedAt: '2026-10-05', result: '自動テスト 全項目合格' };
+  const m = await loadMaster(db), h = await loadHandoff();
+  const v1dev = devs => v1Items({ handoff: h, projects: [], devices: devs, publish: [], lastTest: null, lastBackup: null }, m).filter(i => i.group === '実機確認');
+  // まとめる前：別の端末として扱う（推測で合格にしない）
+  eq(groupDeviceChecks([school, surface]).length, 2, '名前が違えば別の端末');
+  eq(v1dev([school, surface]).map(i => [i.label, i.ok]), [['学校Windows PC の実機確認', false], ['学校Windows PC（Surface・Edge） の実機確認', true]], 'まとめる前は「学校Windows PC」は未確認のまま');
+  eq(sameDeviceSuggestions([school, surface]).map(x => [x.from.id, x.to.id]), [['s', 'f']], 'まとめる候補として提案だけする（（ ）より前が同じ）');
+  // 利用者が確認してまとめた後：1項目・合格の記録を参照
+  const linked = { ...school, sameAs: 'f' };
+  const g = groupDeviceChecks([linked, surface]);
+  eq([g.length, g[0].ok, g[0].device, g[0].keeper.id, g[0].names.sort()], [1, true, '学校Windows PC（Surface・Edge）', 'f', ['学校Windows PC', '学校Windows PC（Surface・Edge）']], 'まとめた後は1つの端末・合格の記録を参照');
+  const items = v1dev([linked, { ...school, id: 's2' }, surface]);
+  eq(items.map(i => [i.label, i.ok]), [['学校Windows PC（Surface・Edge） の実機確認', true]], '同じ名前の未記入の欄（同期でそろった重複）もまとめて1項目');
+  assert(items[0].detail.includes('2026-10-05') && items[0].detail.includes('同じ端末としてまとめた記録：学校Windows PC'), 'どの記録を参照したかを表示');
+  assert(!sameDeviceSuggestions([linked, surface]).length, 'まとめた後は提案しない');
+  // まとめても、相手が合格でなければ合格にしない
+  eq(groupDeviceChecks([linked, { ...surface, status: 'fail' }])[0].ok, false, '相手が不合格なら完成にしない');
+  eq(groupDeviceChecks([linked, { ...surface, status: 'unchecked', result: '' }])[0].ok, false, '相手が未確認（確認日だけ）なら完成にしない');
+  eq(groupDeviceChecks([{ ...school, status: 'fail', result: 'エラー', checkedAt: '2026-10-09', sameAs: 'f' }, surface])[0].ok, false, 'まとめた記録に不合格があれば完成にしない');
+  // つなぎ先が無い・自分自身・循環でも壊れない
+  eq(groupDeviceChecks([{ ...school, sameAs: 'none' }, surface]).length, 2, 'つなぎ先が無ければまとめない');
+  eq(groupDeviceChecks([{ ...school, sameAs: 's' }]).length, 1, '自分自身へのつなぎは無視');
+  eq(groupDeviceChecks([{ ...school, sameAs: 'f' }, { ...surface, sameAs: 's' }]).length, 1, '互いにつないでも止まる');
+});
+
+test('【同じ端末のまとめ】まとめても記録は削除・変更しない（合格の記録は1文字も変わらない）・解除できる', async () => {
+  const { FACTORY_ID } = await import('../js/db.js');
+  const surface = await db.create('checks', { projectId: FACTORY_ID, kind: 'device', device: 'テスト学校PC（Surface・Edge）', status: 'pass', checkedAt: '2026-10-05', result: '合格' });
+  const school = await db.create('checks', { projectId: FACTORY_ID, kind: 'device', device: 'テスト学校PC', status: 'unchecked', checkedAt: null, result: '' });
+  const before = JSON.stringify(await db.get('checks', surface.id)), n = (await db.all('checks')).length;
+  await db.update('checks', school.id, { sameAs: surface.id }, { reason: '利用者の確認により同じ端末としてまとめる' });
+  eq([JSON.stringify(await db.get('checks', surface.id)) === before, (await db.all('checks')).length === n, (await db.get('checks', school.id)).status], [true, true, 'unchecked'], '合格の記録は変わらない・件数も同じ・まとめた側の状態も変えない（未確認のまま）');
+  const mine = d => d.device.startsWith('テスト学校PC');
+  eq(groupDeviceChecks((await db.checksOf(FACTORY_ID, 'device')).filter(mine)).length, 1, 'まとめて1つの端末');
+  await db.update('checks', school.id, { sameAs: null }, { reason: '解除' });
+  eq(groupDeviceChecks((await db.checksOf(FACTORY_ID, 'device')).filter(mine)).length, 2, '解除すると別の端末に戻る');
+  await db.remove('checks', surface.id); await db.remove('checks', school.id);
 });
 
 // ---------------- 実行 ----------------
