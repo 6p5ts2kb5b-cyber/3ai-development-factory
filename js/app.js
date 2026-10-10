@@ -23,7 +23,7 @@ import { syncCheckView } from './views/synccheck.js';
 import { syncRegisterView } from './views/syncregister.js';
 import { syncImportView } from './views/syncimport.js?v=0901';
 import { fillNotice } from './views/noticebar.js';
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 const view = document.getElementById('view');
 
 let db, master, handoff;
