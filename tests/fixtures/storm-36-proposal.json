@@ -1,0 +1,264 @@
+{
+  "format": "storm-factory-assessment-proposal/v1",
+  "project_name": "STORM／連合チーム予定管理",
+  "spec_version": "v1.0",
+  "generated_on": "2026-10-10",
+  "source": "STORM_36項目_仕様照合_2026-10-10.md",
+  "mode": "review_only_until_user_confirms",
+  "overwrite_existing_assessments": false,
+  "matching_policy": "exact_order_and_label_review; never blind-index overwrite",
+  "records": [
+    {
+      "number": 1,
+      "spec_label": "桜・浅羽野・住吉 連合チーム",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "STORM運営用の構成は確認。3校ごとの管理粒度は未確認。"
+    },
+    {
+      "number": 2,
+      "spec_label": "指導者・選手・保護者・審判担当",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "スタッフと審判名簿のコードあり。保護者・選手の専用画面／権限は未確認。"
+    },
+    {
+      "number": 3,
+      "spec_label": "iPhone・スマホ・PC",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "READMEで対応明記。"
+    },
+    {
+      "number": 4,
+      "spec_label": "トップ：予定カードと不足事項",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/app/page.tsx`、`src/components/UnitCard.tsx`、`src/lib/status.ts`。"
+    },
+    {
+      "number": 5,
+      "spec_label": "予定一覧・予定詳細",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/app/activities/page.tsx`、READMEの活動日登録。"
+    },
+    {
+      "number": 6,
+      "spec_label": "グラウンド画面",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/grounds.ts`、README。"
+    },
+    {
+      "number": 7,
+      "spec_label": "指導者画面",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/app/staff/page.tsx`、`src/components/Rosters.tsx`。"
+    },
+    {
+      "number": 8,
+      "spec_label": "審判画面",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/umpire.ts`、README。"
+    },
+    {
+      "number": 9,
+      "spec_label": "3校の学校予定",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "3校のテスト休み・学校行事の独立した登録は未確認。"
+    },
+    {
+      "number": 10,
+      "spec_label": "交通画面",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "移動手段・時刻表の専用画面は未確認。"
+    },
+    {
+      "number": 11,
+      "spec_label": "持ち物画面",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "チェックリスト実装は未確認。"
+    },
+    {
+      "number": 12,
+      "spec_label": "試合・選手・審判・交通案内の出力",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/components/PrintSheet.tsx`で予定表とPDF/共有。案内4種の出力網羅は未確認。"
+    },
+    {
+      "number": 13,
+      "spec_label": "12月〜4月トップ／アカデミー区別",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/divisions.ts`：12〜4月は分割。"
+    },
+    {
+      "number": 14,
+      "spec_label": "予定データ：日時、会場、集合、交通、雨天など",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/data.ts`に日時・会場・選手/審判集合・試合開始など。交通・雨天は未確認。"
+    },
+    {
+      "number": 15,
+      "spec_label": "選手集合と審判集合を別管理",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/components/UnitCard.tsx`、`src/lib/umpire.ts`。"
+    },
+    {
+      "number": 16,
+      "spec_label": "トップでグラウンド・指導者・審判不足表示",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/status.ts`、`src/components/UnitCard.tsx`。"
+    },
+    {
+      "number": 17,
+      "spec_label": "複数グラウンド候補と状態",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/grounds.ts`：候補・確認中・使用可能・不可・決定。"
+    },
+    {
+      "number": 18,
+      "spec_label": "指導者の氏名と参加可否",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "指導者割当が存在。参加可否の全パターンは未検証。"
+    },
+    {
+      "number": 19,
+      "spec_label": "審判の必要数・氏名・球審/塁審・複数試合・集合",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/lib/umpire.ts`、README。細部は実機未検証。"
+    },
+    {
+      "number": 20,
+      "spec_label": "桜・浅羽野・住吉の学校予定登録",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "独立した3校の学校行事機能は未確認。"
+    },
+    {
+      "number": 21,
+      "spec_label": "現地・電車・バス・自転車・逆算",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "専用の交通経路・移動手段処理を未確認。"
+    },
+    {
+      "number": 22,
+      "spec_label": "交通費の管理",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "交通費入力・集計処理を未確認。"
+    },
+    {
+      "number": 23,
+      "spec_label": "持ち物チェック",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "指定品目のチェック機能を未確認。"
+    },
+    {
+      "number": 24,
+      "spec_label": "雨天判定時間",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "項目の登録・通知の有無を未確認。"
+    },
+    {
+      "number": 25,
+      "spec_label": "予定データ保存",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "Supabase `activity_days`、`activity_units`、`games`等。"
+    },
+    {
+      "number": 26,
+      "spec_label": "グラウンド候補と状態の保存",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "Supabase `grounds`、`src/lib/grounds.ts`。"
+    },
+    {
+      "number": 27,
+      "spec_label": "指導者と参加可否の保存",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "`coach_assignments`テーブルを確認。可否の表現範囲は未確認。"
+    },
+    {
+      "number": 28,
+      "spec_label": "審判（試合ごとの割当）の保存",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`umpire_slots`、`umpire_people`、`src/lib/umpire.ts`。"
+    },
+    {
+      "number": 29,
+      "spec_label": "3校の学校予定の保存",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "専用スキーマ未確認。"
+    },
+    {
+      "number": 30,
+      "spec_label": "交通・交通費の保存",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "専用スキーマ未確認。"
+    },
+    {
+      "number": 31,
+      "spec_label": "持ち物リストの保存",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "専用スキーマ未確認。"
+    },
+    {
+      "number": 32,
+      "spec_label": "LINE共有：テキストコピー、LINE API不要",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/components/PrintSheet.tsx`で予定表テキストのクリップボードコピーを確認。"
+    },
+    {
+      "number": 33,
+      "spec_label": "無料で乗換・所要時間を取得",
+      "assessment": "未判定",
+      "verification": "コード上の暫定判定",
+      "evidence": "実装未確認。無料APIを導入済みとは断定できない。"
+    },
+    {
+      "number": 34,
+      "spec_label": "試合・選手・審判・交通案内の印刷",
+      "assessment": "一部",
+      "verification": "コード上の暫定判定",
+      "evidence": "予定表印刷/PDFは`src/components/PrintSheet.tsx`。各案内を個別印刷できるか未確認。"
+    },
+    {
+      "number": 35,
+      "spec_label": "スマホで共有",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/components/PrintSheet.tsx`、PDF共有処理 `src/lib/sharePdf` の参照を確認。実機動作未検証。"
+    },
+    {
+      "number": 36,
+      "spec_label": "LINEに貼り付けやすいテキスト",
+      "assessment": "実装済み",
+      "verification": "コード上の暫定判定",
+      "evidence": "`src/components/PrintSheet.tsx`の `buildPrintText` とコピー処理。"
+    }
+  ]
+}
