@@ -60,7 +60,8 @@ main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 40px); }
   z-index: -1;
 }
 .tabbar a { min-height: var(--tabbar-h); }
-.toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 16px); }
+/* v1.1.0：お知らせは画面の上に出す（上下の両方を指定していたため、縦に引き伸ばされていた） */
+.toast { bottom: auto; max-height: 40vh; }
 .fab { bottom: calc(var(--tabbar-h) + var(--safe-b) + 14px); }
 
 /* 長い文章・項目名：日本語の禁則を守って折り返し、英数字の長い語もはみ出さない */
@@ -130,3 +131,13 @@ p, li, dd { text-wrap: pretty; }
 #dev-card li .btn.small[data-same], #dev-card li .btn.small[data-unsame] { white-space: normal; text-align: left; flex: 1 1 100%; justify-content: flex-start; }
 @media (min-width: 720px) { #dev-card li .btn.small[data-same], #dev-card li .btn.small[data-unsame] { flex: 0 1 auto; } }
 #dev-card .row-btn .badge { white-space: normal; max-width: 100%; }
+
+/* v1.1.0：判定候補JSONの一括反映 */
+.ci-review { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 14px; margin: 12px 0; background: var(--surface-2); }
+.ci-review h3 { margin-top: 0; }
+.ci-rows { counter-reset: none; }
+.ci-rows .ci-row { align-items: flex-start; flex-wrap: nowrap; }
+.ci-rows .ci-row .grow { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ci-rows .ci-row > .badge { flex: none; white-space: normal; max-width: 9em; text-align: center; }
+.ci-row.ci-blocked, .ci-row.ci-mismatch { background: color-mix(in srgb, var(--warn-bg) 60%, transparent); border-radius: var(--radius-s); padding-left: 8px; padding-right: 8px; }
+.cov-memo { font-size: .8rem; margin-top: 2px; overflow-wrap: anywhere; }
