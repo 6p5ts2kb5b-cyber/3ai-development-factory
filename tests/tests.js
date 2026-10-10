@@ -26,6 +26,7 @@ import * as Reg from '../js/sync/register.js';
 import * as Pull from '../js/sync/pull.js';
 import * as S3 from '../js/sync/sync3.js';
 import * as N from '../js/sync/notice.js';
+import * as CI from '../js/covimport.js';
 import { noticeHtml } from '../js/views/noticebar.js';
 
 const TEST_DB = 'factory-test';
@@ -2126,6 +2127,140 @@ test('【同じ端末のまとめ】確認日が入った「未確認」の記�
   eq(groupDeviceChecks([{ ...school, sameAs: 'f', status: 'recheck' }, surface])[0].ok, false, '再確認が必要な記録があれば完成にしない');
   eq(groupDeviceChecks([{ ...school, status: 'unchecked', checkedAt: '2026-10-09' }])[0].ok, false, '未確認だけでは合格にしない');
   eq(groupDeviceChecks([{ ...school, sameAs: 'f' }, { ...surface, status: 'unchecked' }])[0].ok, false, '相手も未確認なら合格にしない');
+});
+
+// ---------------- v1.1.0：確定仕様との照合 判定候補JSONの一括反映 ----------------
+const ciFixture = async () => fetch('fixtures/storm-36-proposal.json', { cache: 'no-cache' }).then(r => r.text());
+async function ciEnv() {
+  await delDB('factory-test-ci');
+  const d = await FactoryDB.open('factory-test-ci'); d.actor = 'テスト担当'; await loadMaster(d);
+  await seedInitialProjects(d, await loadInitialProjects());
+  const p = (await d.all('projects')).find(x => x.name === 'STORM／連合チーム予定管理');
+  await d.setOrigin(p.id, 'existing');
+  const spec = await d.latestFixedSpec(p.id);
+  const items = specItems(spec.body);
+  return { d, p, spec, items, done: async () => { d.close(); await delDB('factory-test-ci'); } };
+}
+test('【判定候補JSON】読み込み：決まった項目だけを読む・秘密鍵/大きすぎ/壊れた/別形式/重複/欠落は読み込まない', async () => {
+  const text = await ciFixture();
+  const r = CI.parseProposal(text);
+  eq([r.ok, r.data.records.length, r.data.projectName, r.data.specVersion], [true, 36, 'STORM／連合チーム予定管理', 'v1.0'], '36行を読める');
+  eq(CI.proposalSummary(r.data), { done: 17, partial: 7, todo: 0, diff: 0, unjudged: 12 }, 'JSONの判定：実装済み17・一部7・未判定12');
+  const j = JSON.parse(text);
+  const bad = o => CI.parseProposal(JSON.stringify(o));
+  assert(!CI.parseProposal(text.replace('"README', '"sk-abcdefghijklmnopqrstuv README')).ok, '秘密鍵らしき文字を拒否');
+  assert(!CI.parseProposal(text.replace('"README', '"-----BEGIN PRIVATE KEY----- README')).ok, '秘密鍵を拒否');
+  assert(!CI.parseProposal('x'.repeat(CI.IMPORT_LIMITS.maxBytes + 1)).ok, '大きすぎるファイルを拒否');
+  assert(!CI.parseProposal('{"format":').ok, '壊れたJSONを拒否');
+  assert(!bad({ ...j, format: 'other/v1' }).ok, '別の形式を拒否');
+  assert(!bad({ ...j, records: [...j.records, { ...j.records[0] }] }).ok, '番号の重複を拒否');
+  assert(!bad({ ...j, records: j.records.map(x => x.number === 5 ? { ...x, assessment: '完璧' } : x) }).ok, '知らない判定を拒否');
+  assert(!bad({ ...j, records: Array.from({ length: CI.IMPORT_LIMITS.maxRecords + 1 }, (_, i) => ({ ...j.records[0], number: i + 1 })) }).ok, '行が多すぎるJSONを拒否');
+  // 余計な項目・スクリプトは取り込まない／実行しない（文字として扱う）
+  const x = bad({ ...j, evil: '<script>window.__pwned=1</script>', records: j.records.map(x => x.number === 1 ? { ...x, extra: 'x', evidence: '<img src=x onerror="window.__pwned=1">' } : x) });
+  eq([x.ok, Object.keys(x.data.records[0]).sort().join(), typeof window.__pwned], [true, 'assessment,evidence,label,number,pii,status,verification', 'undefined'], '決まった項目だけ・実行しない');
+  // 個人情報らしき根拠は保存しない
+  const pii = bad({ ...j, records: j.records.map(x => x.number === 2 ? { ...x, evidence: '連絡先 090-1234-5678 田中さん' } : x) });
+  eq([pii.ok, pii.data.records[1].evidence, pii.data.records[1].pii], [true, '', true], '個人情報らしき根拠は保存しない');
+  // 本物の根拠（ファイル名・テーブル名）は個人情報と誤判定しない
+  eq(r.data.records.filter(x => x.pii).length, 0, '実際の36行に個人情報の誤判定なし');
+});
+
+test('【判定候補JSON】照合：番号だけで対応させない（名前も確認）・別プロジェクト/別の版/件数違い/名前の不一致は止める', async () => {
+  const E = await ciEnv();
+  try {
+    const data = CI.parseProposal(await ciFixture()).data;
+    const ctx0 = { projectName: E.p.name, specVersion: E.spec.version, items: E.items };
+    eq(E.items.length, 36, 'Factoryの確定仕様は36項目');
+    const m = CI.matchProposal(data, ctx0);
+    eq([m.ok, m.rows.filter(r => r.state === 'matched').length, m.rows.filter(r => r.state === 'ambiguous').map(r => r.rec.number), m.rows.filter(r => r.state === 'mismatch').length], [true, 34, [9, 17], 0], '34行は対応・9番と17番は要手動対応（ほかの項目の方が名前が似ている）');
+    assert(m.rows.every(r => r.item === E.items[r.rec.number - 1]), '番号の位置の項目に対応');
+    assert(!CI.matchProposal({ ...data, projectName: 'Vintage Hunt' }, ctx0).ok, '別プロジェクトを拒否');
+    assert(!CI.matchProposal({ ...data, specVersion: 'v1.1' }, ctx0).ok, '別の版を拒否');
+    assert(!CI.matchProposal({ ...data, records: data.records.slice(0, 35) }, ctx0).ok, '欠落（35行）を拒否');
+    const gap = { ...data, records: data.records.map(r => r.number === 36 ? { ...r, number: 37 } : r) };
+    assert(!CI.matchProposal(gap, ctx0).ok, '番号の抜けを拒否');
+    // 名前の不一致：5番と22番の項目名を入れ替える → どちらも対応できない → 反映できない（件数を無理に合わせない）
+    const sw = { ...data, records: data.records.map(r => r.number === 5 ? { ...r, label: data.records[21].label } : r.number === 22 ? { ...r, label: data.records[4].label } : r) };
+    const ms = CI.matchProposal(sw, ctx0);
+    eq(ms.rows.filter(r => r.state === 'mismatch').map(r => r.rec.number), [5, 22], '名前が合わない行は対応できない');
+    eq(CI.planImport(ms.rows, {}, { confirmed: new Set([9, 17]) }).canApply, false, '対応できない行があれば反映できない');
+    // 要手動対応は確認するまで反映できない
+    eq(CI.planImport(m.rows, {}).canApply, false, '要手動対応が残っていれば反映できない');
+    const plan = CI.planImport(m.rows, {}, { confirmed: new Set([9, 17]) });
+    eq([plan.canApply, plan.counts.apply, plan.counts.none], [true, 24, 12], '確認すると反映できる（未判定へ24件・JSONも未判定12件）');
+  } finally { await E.done(); }
+});
+
+test('【判定候補JSON】既存の判定・メモは上書きしない（選んだ行だけ上書き）・反映は1回の保存・失敗したら何も変えない', async () => {
+  const E = await ciEnv();
+  try {
+    const data = CI.parseProposal(await ciFixture()).data;
+    const m = CI.matchProposal(data, { projectName: E.p.name, specVersion: E.spec.version, items: E.items });
+    // 既存の判定：3番＝未実装（メモあり）・4番＝実装済み（JSONと同じ）・10番＝一部（JSONは未判定）
+    const k = n => E.items[n - 1].key;
+    await E.d.setCoverage(E.p.id, k(3), 'todo', { memo: '自分で確認：スマホ表示が崩れる' });
+    await E.d.setCoverage(E.p.id, k(4), 'done', { memo: '' });
+    await E.d.setCoverage(E.p.id, k(10), 'partial', { memo: '交通画面の試作あり' });
+    let p = await E.d.get('projects', E.p.id);
+    const cov0 = p.existing.coverage;
+    let plan = CI.planImport(m.rows, cov0, { confirmed: new Set([9, 17]) });
+    eq([plan.rows[2].action, plan.rows[3].action, plan.rows[9].action, plan.counts.existing, plan.counts.overwritable], ['keep', 'same', 'keep', 3, 1], '既定では既存の判定を保持（上書きできるのは3番だけ）');
+    // DB失敗：確認画面を開いたあとに変更があった → 保存しない
+    const rev = p.rev;
+    await E.d.setCoverage(E.p.id, k(36), 'todo', {});
+    const before = JSON.stringify((await E.d.get('projects', E.p.id)).existing.coverage);
+    await rejects(E.d.applyCoverageImport(E.p.id, { expectedRev: rev, specVersion: E.spec.version, coverage: CI.buildCoverage(cov0, plan) }), '確認後の変更があっても保存した');
+    eq(JSON.stringify((await E.d.get('projects', E.p.id)).existing.coverage), before, '失敗したら何も変わらない');
+    // DB失敗：書き込みで失敗 → 何も変わらない
+    p = await E.d.get('projects', E.p.id);
+    const orig = E.d._tx.bind(E.d);
+    E.d._tx = (stores, mode) => { if (mode === 'readwrite') throw new Error('書き込みに失敗（テスト）'); return orig(stores, mode); };
+    await rejects(E.d.applyCoverageImport(E.p.id, { expectedRev: p.rev, specVersion: E.spec.version, coverage: CI.buildCoverage(p.existing.coverage, CI.planImport(m.rows, p.existing.coverage, { confirmed: new Set([9, 17]) })) }), '書き込み失敗なのに成功した');
+    E.d._tx = orig;
+    eq(JSON.stringify((await E.d.get('projects', E.p.id)).existing.coverage), before, '書き込みに失敗しても何も変わらない');
+    // 成功：3番だけ上書きを選ぶ
+    p = await E.d.get('projects', E.p.id);
+    plan = CI.planImport(m.rows, p.existing.coverage, { confirmed: new Set([9, 17]), overwrite: new Set([3]) });
+    const histBefore = (await E.d.all('history')).length;
+    await E.d.applyCoverageImport(E.p.id, { expectedRev: p.rev, specVersion: E.spec.version, coverage: CI.buildCoverage(p.existing.coverage, plan, { source: 'storm.json', generatedOn: '2026-10-10' }), applied: plan.counts.apply, overwritten: plan.counts.overwrite });
+    const cov = (await E.d.get('projects', E.p.id)).existing.coverage;
+    eq([cov[k(3)].status, cov[k(3)].memo, cov[k(3)].imported.previous.status], ['done', '自分で確認：スマホ表示が崩れる', 'todo'], '選んだ3番だけ上書き（メモは残す・前の判定を記録）');
+    eq([cov[k(10)].status, cov[k(10)].memo, cov[k(36)].status], ['partial', '交通画面の試作あり', 'todo'], '既存の判定とメモは保持');
+    assert(cov[k(5)].memo.includes('実機動作確認済みではありません') && cov[k(5)].imported.number === 5, '暫定であることと根拠をメモに記録');
+    eq((await E.d.all('history')).length - histBefore, 1, '1回の保存（変更履歴1件）');
+  } finally { await E.done(); }
+});
+
+test('【判定候補JSON】新しいプロジェクトに反映 → 実装済み17・一部7・未判定12／再読込しても残る／バックアップから復元しても同じ', async () => {
+  const E = await ciEnv();
+  try {
+    const data = CI.parseProposal(await ciFixture()).data;
+    const m = CI.matchProposal(data, { projectName: E.p.name, specVersion: E.spec.version, items: E.items });
+    const p = await E.d.get('projects', E.p.id);
+    const plan = CI.planImport(m.rows, p.existing?.coverage || {}, { confirmed: new Set([9, 17]) });
+    await E.d.applyCoverageImport(E.p.id, { expectedRev: p.rev, specVersion: E.spec.version, coverage: CI.buildCoverage(p.existing?.coverage || {}, plan) });
+    const sum = async db => coverageSummary(E.items, (await db.get('projects', E.p.id)).existing.coverage);
+    eq(await sum(E.d), { unjudged: 12, done: 17, partial: 7, todo: 0, diff: 0 }, '実装済み17・一部7・未判定12');
+    // 再読込
+    E.d.close();
+    const d2 = await FactoryDB.open('factory-test-ci'); await loadMaster(d2);
+    eq(await sum(d2), { unjudged: 12, done: 17, partial: 7, todo: 0, diff: 0 }, '開き直しても残る');
+    // バックアップ → 消去 → 復元
+    const backup = JSON.parse(JSON.stringify(await d2.exportAll()));
+    d2.close(); await delDB('factory-test-ci');
+    const d3 = await FactoryDB.open('factory-test-ci'); await loadMaster(d3);
+    await d3.importAll(backup);
+    eq(await sum(d3), { unjudged: 12, done: 17, partial: 7, todo: 0, diff: 0 }, 'バックアップから復元しても同じ');
+    eq((await d3.all('projects')).length, 8, '8プロジェクトも残る');
+    E.d = d3;
+  } finally { await E.done(); }
+});
+
+test('【判定候補JSON】読み込みの部品はネットワーク・本番アプリ・Supabaseにアクセスせず、コードを実行しない', async () => {
+  const code = (await fetch('../js/covimport.js', { cache: 'no-cache' }).then(r => r.text())).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  assert(!/\bfetch\(|XMLHttpRequest|WebSocket|sendBeacon|\beval\(|new Function|(^|[^A-Za-z])import\(|createClient/.test(code) && !/supabase\.co/i.test(code), 'ネットワーク接続・コード実行の命令がある');
+  assert(/JSON\.parse\(raw\)/.test(code), 'JSON.parse で読むだけ');
 });
 
 // ---------------- 実行 ----------------
