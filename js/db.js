@@ -696,6 +696,18 @@ export class FactoryDB {
     return this.update('projects', projectId, { existing: { ...(p.existing || {}), coverage: cov } }, { actor, reason: `仕様との照合：${key}` });
   }
 
+  // v1.1.0：判定候補JSONの一括反映。画面で確認した内容（新しい coverage 全体）を、1回の保存で書く（全部成功するか、何も変わらないか）
+  //   確認画面を開いたあとにプロジェクトが変わっていたら（ほかの操作・同期の受け取りなど）保存しない。確定仕様の版が変わっていても保存しない
+  async applyCoverageImport(projectId, { expectedRev, specVersion, coverage, applied = 0, overwritten = 0, source = '' }, { actor } = {}) {
+    const p = await this.get('projects', projectId);
+    if (!p) throw new FactoryError('プロジェクトが見つかりません');
+    if ((p.rev || 0) !== expectedRev) throw new FactoryError('確認画面を開いたあとに、このプロジェクトが変更されました。反映していません', ['もう一度「JSONから判定候補を読み込み」からやり直してください。']);
+    const spec = await this.latestFixedSpec(projectId);
+    if (!spec || spec.version !== specVersion) throw new FactoryError('確定仕様の版が変わりました。反映していません');
+    for (const v of Object.values(coverage || {})) if (!(this.master?.coverageStatuses || []).some(s => s.key === v?.status)) throw new FactoryError('判定の値が正しくありません。反映していません');
+    return this.update('projects', projectId, { existing: { ...(p.existing || {}), coverage } }, { actor, reason: `確定仕様 ${specVersion} との照合：判定候補JSONから一括反映（未判定へ反映 ${applied}件・上書き ${overwritten}件${source ? `・${source}` : ''}）` });
+  }
+
   // 照合で見つかった差分のうち、ユーザーが選んだものだけ改良候補として要望箱へ（未検討で入る）
   async coverageToRequests(projectId, keys = [], { actor } = {}) {
     const p = await this.get('projects', projectId);
